@@ -33,6 +33,26 @@ final class QueryEngine {
                 symbol: "rectangle.on.rectangle",
                 isAvailable: { WindowManager.hasSecondDisplay },
                 run: { WindowManager.moveFocusedWindowToNextDisplay() }),
+        Command(title: "Sleep",
+                subtitle: "Put the Mac to sleep",
+                symbol: "moon.zzz",
+                isAvailable: { true },
+                run: { SystemActions.sleep() }),
+        Command(title: "Lock Screen",
+                subtitle: "Sleep displays and lock the session",
+                symbol: "lock",
+                isAvailable: { true },
+                run: { SystemActions.lockScreen() }),
+        Command(title: "Empty Trash",
+                subtitle: "Ask Finder to empty the trash",
+                symbol: "trash",
+                isAvailable: { true },
+                run: { SystemActions.emptyTrash() }),
+        Command(title: "Toggle Dark Mode",
+                subtitle: "Switch between light and dark appearance",
+                symbol: "circle.lefthalf.filled",
+                isAvailable: { true },
+                run: { SystemActions.toggleDarkMode() }),
         Command(title: "Quit VillainCaster",
                 subtitle: "Close this launcher",
                 symbol: "power",
@@ -66,6 +86,16 @@ final class QueryEngine {
                     finish(.inline(display: display, copyValue: copyValue))
                 }
             } deliver: { deliver($0) }
+            return
+        }
+
+        if let time = TimeLookup.lookup(text) {
+            deliver(.inline(display: time.display, copyValue: time.copyValue))
+            return
+        }
+
+        if let emojiItems = EmojiSearch.search(text) {
+            deliver(.list(emojiItems))
             return
         }
 
