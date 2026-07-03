@@ -1,0 +1,444 @@
+import AppKit
+
+private let panelWidth: CGFloat = 640
+private let inputHeight: CGFloat = 60
+private let rowHeight: CGFloat = 50
+private let maxVisibleRows = 8
+private let listTopPadding: CGFloat = 8
+private let listBottomPadding: CGFloat = 14
+private let listSidePadding: CGFloat = 14
+private let inputSidePadding: CGFloat = 20
+
+final class LauncherPanel: NSPanel {
+    var onScreenshot: (() -> Void)?
+
+    override var canBecomeKey: Bool { true }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           event.charactersIgnoringModifiers == "s" {
+            onScreenshot?()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+}
+
+final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
+    private let panel: LauncherPanel
+    private let field = NSTextField()
+    private let tableView = NSTableView()
+    private let scrollView = NSScrollView()
+    private let divider = NSBox()
+    private let inlineResultField = NSTextField(labelWithString: "")
+    private let engine = QueryEngine()
+    private var results: [ResultItem] = []
+    private var inlineCopyValue: String?
+
+    override init() {
+        panel = LauncherPanel(
+            contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: inputHeight),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        super.init()
+        configurePanel()
+        configureField()
+        configureTable()
+        panel.onScreenshot = { [weak self] in self?.captureScreenshot() }
+        engine.refreshApps()
+    }
+
+    /// ⌘S: saves a PNG of the panel to the Desktop. Captures the screen
+    /// REGION under the panel (composited pixels — blur and what shows
+    /// through it, exactly what the eye sees). Window-only capture (-l)
+    /// would export transparency as an alpha channel and lose the blur.
+    /// Needs Screen Recording permission; falls back to a view render.
+    private func captureScreenshot() {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Desktop/villaincaster-\(formatter.string(from: Date())).png")
+
+        // Cocoa (bottom-left origin) → CG/screencapture (top-left origin).
+        let frame = panel.frame
+        let primaryHeight = NSScreen.screens.first?.frame.maxY ?? 0
+        let region = "\(Int(frame.minX)),\(Int(primaryHeight - frame.maxY)),\(Int(frame.width)),\(Int(frame.height))"
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            task.arguments = ["-x", "-R", region, url.path]
+            try? task.run()
+            task.waitUntilExit()
+            let captured = task.terminationStatus == 0
+                && FileManager.default.fileExists(atPath: url.path)
+
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if captured {
+                    self.showScreenshotFeedback("📸 saved to Desktop")
+                    NSLog("VillainCaster screenshot (screen grab): \(url.path)")
+                } else {
+                    self.captureViewRender(to: url)
+                }
+            }
+        }
+    }
+
+    private func captureViewRender(to url: URL) {
+        guard let contentView = panel.contentView else { return }
+        let bounds = contentView.bounds
+        guard let rep = contentView.bitmapImageRepForCachingDisplay(in: bounds) else { return }
+        contentView.cacheDisplay(in: bounds, to: rep)
+        guard let data = rep.representation(using: .png, properties: [:]) else { return }
+        do {
+            try data.write(to: url)
+            showScreenshotFeedback("📸 saved (no blur — grant Screen Recording)")
+            NSLog("VillainCaster screenshot (view render): \(url.path)")
+        } catch {
+            NSLog("VillainCaster screenshot failed: \(error)")
+        }
+    }
+
+    private func showScreenshotFeedback(_ message: String) {
+        inlineResultField.stringValue = message
+        inlineResultField.isHidden = false
+        relayout()
+    }
+
+    // MARK: - Setup
+
+    private func configurePanel() {
+        panel.level = .floating
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hidesOnDeactivate = false
+        panel.isMovableByWindowBackground = true
+        panel.delegate = self
+
+        let effect = NSVisualEffectView()
+        effect.material = .hudWindow
+        effect.state = .active
+        effect.blendingMode = .behindWindow
+        effect.wantsLayer = true
+        effect.layer?.cornerRadius = 18
+        effect.layer?.cornerCurve = .continuous
+        effect.layer?.masksToBounds = true
+        // Hairline rim for the glass edge.
+        effect.layer?.borderWidth = 1
+        effect.layer?.borderColor = NSColor.white.withAlphaComponent(0.14).cgColor
+        panel.contentView = effect
+    }
+
+    private func configureField() {
+        field.font = .systemFont(ofSize: 24, weight: .light)
+        field.placeholderString = "Search apps, calculate, convert…"
+        field.isBezeled = false
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.lineBreakMode = .byTruncatingTail
+        field.delegate = self
+        panel.contentView?.addSubview(field)
+
+        divider.boxType = .separator
+        divider.isHidden = true
+        panel.contentView?.addSubview(divider)
+
+        inlineResultField.font = .systemFont(ofSize: 24, weight: .light)
+        inlineResultField.textColor = .secondaryLabelColor
+        inlineResultField.alignment = .right
+        inlineResultField.lineBreakMode = .byTruncatingHead
+        inlineResultField.isHidden = true
+        panel.contentView?.addSubview(inlineResultField)
+    }
+
+    private func configureTable() {
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("result"))
+        column.width = panelWidth - listSidePadding * 2
+        tableView.addTableColumn(column)
+        tableView.headerView = nil
+        tableView.backgroundColor = .clear
+        tableView.rowHeight = rowHeight
+        tableView.intercellSpacing = NSSize(width: 0, height: 0)
+        // .plain kills the macOS 11+ "inset" style, which draws its own
+        // rounded, inset selection on top of our drawSelection — the source
+        // of mismatched corner radii that vary by row position.
+        tableView.style = .plain
+        tableView.selectionHighlightStyle = .regular
+        tableView.dataSource = self
+        tableView.delegate = self
+        tableView.target = self
+        tableView.action = #selector(rowClicked)
+
+        scrollView.documentView = tableView
+        scrollView.hasVerticalScroller = true
+        scrollView.drawsBackground = false
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+        scrollView.verticalScrollElasticity = .none
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsets()
+        panel.contentView?.addSubview(scrollView)
+    }
+
+    // MARK: - Show / hide
+
+    func toggle() {
+        if panel.isVisible {
+            hide()
+        } else {
+            show()
+        }
+    }
+
+    func show() {
+        guard let screen = NSScreen.main else { return }
+        let visible = screen.visibleFrame
+        let top = visible.minY + visible.height * 0.72
+        panel.setFrame(
+            NSRect(x: visible.midX - panelWidth / 2, y: top - inputHeight,
+                   width: panelWidth, height: inputHeight),
+            display: false
+        )
+        field.stringValue = ""
+        results = []
+        inlineCopyValue = nil
+        inlineResultField.isHidden = true
+        tableView.reloadData()
+        relayout()
+        panel.makeKeyAndOrderFront(nil)
+        panel.makeFirstResponder(field)
+        engine.refreshApps()
+        runQuery() // empty query → most-used items
+    }
+
+    func hide() {
+        panel.orderOut(nil)
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        hide()
+    }
+
+    /// Resizes the panel downward from a fixed top edge as results change.
+    private func relayout() {
+        let rows = min(results.count, maxVisibleRows)
+        let visibleListHeight = CGFloat(rows) * rowHeight
+        let listAreaHeight: CGFloat = rows > 0
+            ? 1 + listTopPadding + visibleListHeight + listBottomPadding
+            : 0
+        let totalHeight = inputHeight + listAreaHeight
+
+        var frame = panel.frame
+        let top = frame.maxY
+        frame.size.height = totalHeight
+        frame.origin.y = top - totalHeight
+        panel.setFrame(frame, display: true)
+
+        // Size the input to its actual line height and center it vertically —
+        // a taller frame makes NSTextField top-align the text.
+        let fieldHeight = ceil(field.cell?.cellSize(forBounds:
+            NSRect(x: 0, y: 0, width: 100, height: 100)).height ?? 30)
+        let fieldY = totalHeight - inputHeight + (inputHeight - fieldHeight) / 2
+        if inlineResultField.isHidden {
+            field.frame = NSRect(x: inputSidePadding, y: fieldY,
+                                 width: panelWidth - inputSidePadding * 2, height: fieldHeight)
+        } else {
+            // Split the input row: query on the left, "= result" on the right.
+            inlineResultField.sizeToFit()
+            let labelWidth = min(inlineResultField.frame.width, panelWidth * 0.5)
+            inlineResultField.frame = NSRect(x: panelWidth - inputSidePadding - labelWidth, y: fieldY,
+                                             width: labelWidth, height: fieldHeight)
+            field.frame = NSRect(x: inputSidePadding, y: fieldY,
+                                 width: panelWidth - inputSidePadding * 2 - labelWidth - 12, height: fieldHeight)
+        }
+        divider.frame = NSRect(x: 0, y: totalHeight - inputHeight - 1, width: panelWidth, height: 1)
+        divider.isHidden = rows == 0
+        scrollView.frame = NSRect(x: listSidePadding, y: listBottomPadding,
+                                  width: panelWidth - listSidePadding * 2, height: visibleListHeight)
+        scrollView.isHidden = rows == 0
+        // Keep the table exactly as wide as the visible clip area, otherwise
+        // the selection highlight extends under the clipped edge and its
+        // right corners appear square.
+        let contentWidth = scrollView.contentSize.width
+        if let column = tableView.tableColumns.first, column.width != contentWidth {
+            column.width = contentWidth
+        }
+    }
+
+    // MARK: - Text input
+
+    func controlTextDidChange(_ obj: Notification) {
+        runQuery()
+    }
+
+    private func runQuery() {
+        engine.query(field.stringValue) { [weak self] output in
+            guard let self else { return }
+            switch output {
+            case .empty:
+                self.results = []
+                self.inlineCopyValue = nil
+                self.inlineResultField.isHidden = true
+            case .list(let items):
+                self.results = items
+                self.inlineCopyValue = nil
+                self.inlineResultField.isHidden = true
+            case .inline(let display, let copyValue):
+                self.results = []
+                self.inlineCopyValue = copyValue
+                self.inlineResultField.stringValue = display
+                self.inlineResultField.isHidden = false
+            }
+            self.tableView.reloadData()
+            if !self.results.isEmpty {
+                self.tableView.selectRowIndexes([0], byExtendingSelection: false)
+                self.tableView.scrollRowToVisible(0)
+            }
+            self.relayout()
+        }
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        switch commandSelector {
+        case #selector(NSResponder.moveDown(_:)):
+            moveSelection(by: 1)
+            return true
+        case #selector(NSResponder.moveUp(_:)):
+            moveSelection(by: -1)
+            return true
+        case #selector(NSResponder.insertNewline(_:)):
+            executeSelected()
+            return true
+        case #selector(NSResponder.cancelOperation(_:)):
+            hide()
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func moveSelection(by delta: Int) {
+        guard !results.isEmpty else { return }
+        let current = tableView.selectedRow
+        let next = current < 0 ? 0 : min(max(current + delta, 0), results.count - 1)
+        tableView.selectRowIndexes([next], byExtendingSelection: false)
+        tableView.scrollRowToVisible(next)
+    }
+
+    private func executeSelected() {
+        if let copyValue = inlineCopyValue {
+            hide()
+            Clipboard.copy(copyValue)
+            return
+        }
+        let row = tableView.selectedRow >= 0 ? tableView.selectedRow : 0
+        guard row < results.count else {
+            hide()
+            return
+        }
+        let item = results[row]
+        hide()
+        if let key = item.usageKey {
+            UsageStore.record(key)
+        }
+        item.action?()
+    }
+
+    @objc private func rowClicked() {
+        guard tableView.clickedRow >= 0 else { return }
+        tableView.selectRowIndexes([tableView.clickedRow], byExtendingSelection: false)
+        executeSelected()
+    }
+
+    // MARK: - Table
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        results.count
+    }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let identifier = NSUserInterfaceItemIdentifier("ResultCell")
+        let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? ResultCell
+            ?? ResultCell(identifier: identifier)
+        cell.configure(with: results[row])
+        return cell
+    }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        ResultRowView()
+    }
+}
+
+/// Glassy rounded highlight — plain white (dark) / black (light) at low
+/// alpha, no border, like system glass selections. Keeps normal text colors.
+final class ResultRowView: NSTableRowView {
+    override func drawSelection(in dirtyRect: NSRect) {
+        guard isSelected else { return }
+        let rect = bounds.insetBy(dx: 2, dy: 3)
+        let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let fill = isDark
+            ? NSColor.white.withAlphaComponent(0.13)
+            : NSColor.black.withAlphaComponent(0.07)
+        fill.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: 9, yRadius: 9).fill()
+    }
+}
+
+final class ResultCell: NSTableCellView {
+    private let iconView = NSImageView()
+    private let titleField = NSTextField(labelWithString: "")
+    private let subtitleField = NSTextField(labelWithString: "")
+
+    init(identifier: NSUserInterfaceItemIdentifier) {
+        super.init(frame: .zero)
+        self.identifier = identifier
+
+        titleField.font = .systemFont(ofSize: 16)
+        titleField.lineBreakMode = .byTruncatingTail
+        subtitleField.font = .systemFont(ofSize: 13)
+        subtitleField.textColor = .secondaryLabelColor
+        subtitleField.lineBreakMode = .byTruncatingMiddle
+
+        addSubview(iconView)
+        addSubview(titleField)
+        addSubview(subtitleField)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func configure(with item: ResultItem) {
+        iconView.image = item.icon
+        titleField.stringValue = item.title
+        subtitleField.stringValue = item.subtitle ?? ""
+        subtitleField.isHidden = item.subtitle == nil
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let hasIcon = iconView.image != nil
+        let iconSize: CGFloat = 24
+        iconView.frame = NSRect(x: 12, y: (bounds.height - iconSize) / 2,
+                                width: hasIcon ? iconSize : 0, height: iconSize)
+        let textX: CGFloat = hasIcon ? 12 + iconSize + 10 : 14
+        let textWidth = bounds.width - textX - 14
+        if subtitleField.isHidden {
+            titleField.frame = NSRect(x: textX, y: (bounds.height - 21) / 2, width: textWidth, height: 21)
+        } else {
+            titleField.frame = NSRect(x: textX, y: bounds.height / 2 - 1, width: textWidth, height: 21)
+            subtitleField.frame = NSRect(x: textX, y: bounds.height / 2 - 18, width: textWidth, height: 17)
+        }
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        needsLayout = true
+    }
+}
