@@ -77,12 +77,23 @@ final class QueryEngine {
             return
         }
 
+        // Frecency boost: items you actually launch outrank same-fuzzy-score
+        // neighbors ("zen" → Zen Browser above an app literally named Zen),
+        // and the boost fades for things not used in a while.
+        let frecency = UsageStore.decayedAll()
+        func boost(_ item: ResultItem) -> Int {
+            guard let key = item.usageKey else { return 0 }
+            return Int(min(frecency[key] ?? 0, 20) * 10)
+        }
+
         var scored: [(score: Int, item: ResultItem)] = appIndex.searchScored(text).map { score, entry in
-            (score, appItem(entry))
+            let item = appItem(entry)
+            return (score + boost(item), item)
         }
         for command in commands where command.isAvailable() {
             guard let score = Fuzzy.score(query: text, target: command.title) else { continue }
-            scored.append((score, commandItem(command)))
+            let item = commandItem(command)
+            scored.append((score + boost(item), item))
         }
         scored.sort { $0.score > $1.score }
         deliver(.list(scored.prefix(8).map(\.item)))

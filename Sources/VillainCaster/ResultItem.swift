@@ -10,23 +10,57 @@ struct ResultItem {
     var action: (() -> Void)?
 }
 
-/// Persists how often each item was executed so the empty query can show
-/// the most-used ones.
+/// Frecency store: every execution adds 1 to a score that decays
+/// exponentially (half-life 7 days). A daily-used app keeps a high score;
+/// something launched a lot last month fades on its own. Backs both the
+/// empty-query top list and the search-ranking boost.
 enum UsageStore {
-    private static let defaultsKey = "usageCounts"
+    private static let defaultsKey = "usageFrecency"
+    private static let legacyKey = "usageCounts"
+    private static let halfLife: Double = 7 * 24 * 3600
 
     static func record(_ id: String) {
-        var counts = UserDefaults.standard.dictionary(forKey: defaultsKey) as? [String: Int] ?? [:]
-        counts[id, default: 0] += 1
-        UserDefaults.standard.set(counts, forKey: defaultsKey)
+        var entries = load()
+        let now = Date().timeIntervalSince1970
+        let current = entries[id].map { decayedScore($0, now: now) } ?? 0
+        entries[id] = [current + 1, now]
+        UserDefaults.standard.set(entries, forKey: defaultsKey)
+    }
+
+    /// Current decayed score per id — snapshot once per query, not per item.
+    static func decayedAll() -> [String: Double] {
+        let now = Date().timeIntervalSince1970
+        return load().mapValues { decayedScore($0, now: now) }
     }
 
     static func top(_ limit: Int) -> [String] {
-        let counts = UserDefaults.standard.dictionary(forKey: defaultsKey) as? [String: Int] ?? [:]
-        return counts
+        decayedAll()
             .sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
             .prefix(limit)
             .map(\.key)
+    }
+
+    // Stored as [id: [score, lastUsedEpoch]].
+    private static func load() -> [String: [Double]] {
+        let defaults = UserDefaults.standard
+        if let stored = defaults.dictionary(forKey: defaultsKey) as? [String: [Double]] {
+            return stored
+        }
+        // Migrate the old plain-count format: count becomes the score,
+        // stamped now.
+        if let legacy = defaults.dictionary(forKey: legacyKey) as? [String: Int] {
+            let now = Date().timeIntervalSince1970
+            let migrated = legacy.mapValues { [Double($0), now] }
+            defaults.set(migrated, forKey: defaultsKey)
+            defaults.removeObject(forKey: legacyKey)
+            return migrated
+        }
+        return [:]
+    }
+
+    private static func decayedScore(_ entry: [Double], now: Double) -> Double {
+        guard entry.count == 2 else { return 0 }
+        return entry[0] * pow(0.5, max(0, now - entry[1]) / halfLife)
     }
 }
 
