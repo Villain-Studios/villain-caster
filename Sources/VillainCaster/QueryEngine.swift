@@ -33,6 +33,11 @@ final class QueryEngine {
                 symbol: "rectangle.on.rectangle",
                 isAvailable: { WindowManager.hasSecondDisplay },
                 run: { WindowManager.moveFocusedWindowToNextDisplay() }),
+        Command(title: "Quit VillainCaster",
+                subtitle: "Close this launcher",
+                symbol: "power",
+                isAvailable: { true },
+                run: { NSApp.terminate(nil) }),
     ]
 
     func refreshApps() {
