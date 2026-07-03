@@ -142,9 +142,27 @@ final class QueryEngine {
             title: entry.name,
             subtitle: nil,
             usageKey: "app:\(entry.url.path)",
-            action: { NSWorkspace.shared.openApplication(at: entry.url,
-                                                         configuration: NSWorkspace.OpenConfiguration()) }
+            action: { Self.launch(entry.url) }
         )
+    }
+
+    /// Launches the app at exactly this URL. Matching running apps by URL
+    /// (not bundle id) and disabling substitution keeps sibling builds with
+    /// the same bundle id apart — e.g. Zen Browser vs Zen Twilight, where
+    /// the default behavior would focus whichever one is already running.
+    private static func launch(_ url: URL) {
+        if let running = NSWorkspace.shared.runningApplications
+            .first(where: { $0.bundleURL?.standardizedFileURL.path == url.standardizedFileURL.path }) {
+            if #available(macOS 14.0, *) {
+                running.activate()
+            } else {
+                running.activate(options: [])
+            }
+            return
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.allowsRunningApplicationSubstitution = false
+        NSWorkspace.shared.openApplication(at: url, configuration: configuration)
     }
 
     private func commandItem(_ command: Command) -> ResultItem {
