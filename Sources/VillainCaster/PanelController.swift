@@ -34,6 +34,8 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
     private let engine = QueryEngine()
     private var results: [ResultItem] = []
     private var inlineCopyValue: String?
+    /// Query restored on next open when the panel closed without executing.
+    private var storedText: String?
 
     override init() {
         panel = LauncherPanel(
@@ -204,20 +206,33 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
                    width: panelWidth, height: inputHeight),
             display: false
         )
-        field.stringValue = ""
+        field.stringValue = storedText ?? ""
         results = []
         inlineCopyValue = nil
         inlineResultField.isHidden = true
         tableView.reloadData()
         relayout()
         panel.makeKeyAndOrderFront(nil)
+        // Focusing selects any restored text, so typing replaces it.
         panel.makeFirstResponder(field)
         engine.refreshApps()
-        runQuery() // empty query → most-used items
+        runQuery() // restored query or empty → most-used items
     }
 
     func hide() {
+        storedText = restorableText()
         panel.orderOut(nil)
+    }
+
+    /// Text worth restoring next time: an unfinished search. One-shot
+    /// lookups (math/currency/time — inline visible — and weather) are not.
+    private func restorableText() -> String? {
+        let text = field.stringValue.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty,
+              inlineResultField.isHidden,
+              !Weather.matches(text)
+        else { return nil }
+        return field.stringValue
     }
 
     func windowDidResignKey(_ notification: Notification) {
@@ -333,6 +348,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
     private func executeSelected() {
         if let copyValue = inlineCopyValue {
             hide()
+            storedText = nil
             Clipboard.copy(copyValue)
             return
         }
@@ -343,6 +359,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
         }
         let item = results[row]
         hide()
+        storedText = nil // executed — next open starts fresh
         if let key = item.usageKey {
             UsageStore.record(key)
         }
