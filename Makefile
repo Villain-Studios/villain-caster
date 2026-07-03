@@ -18,9 +18,11 @@ app: build
 	@echo "Built $(BUNDLE)"
 
 install: app
+	-pkill -x $(APP)
 	rm -rf /Applications/$(APP).app
 	cp -R $(BUNDLE) /Applications/
-	@echo "Installed to /Applications/$(APP).app"
+	open /Applications/$(APP).app
+	@echo "Installed and started /Applications/$(APP).app"
 
 clean:
 	rm -rf .build build
