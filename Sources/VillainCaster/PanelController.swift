@@ -15,11 +15,25 @@ final class LauncherPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
 
+    // Accessory apps have no Edit menu, so ⌘V/⌘C/⌘X/⌘A key equivalents
+    // have nothing to dispatch them — route them to the field editor here.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-           event.charactersIgnoringModifiers == "s" {
-            onScreenshot?()
-            return true
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command {
+            switch event.charactersIgnoringModifiers {
+            case "s":
+                onScreenshot?()
+                return true
+            case "v":
+                return NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: self)
+            case "c":
+                return NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: self)
+            case "x":
+                return NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: self)
+            case "a":
+                return NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: self)
+            default:
+                break
+            }
         }
         return super.performKeyEquivalent(with: event)
     }
