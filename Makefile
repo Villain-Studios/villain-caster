@@ -1,5 +1,8 @@
 APP = VillainCaster
 BUNDLE = build/$(APP).app
+# Stable identity keeps TCC grants (Screen Recording, Accessibility) valid
+# across rebuilds; ad-hoc ("-") re-prompts after every install.
+SIGN_IDENTITY = $(shell security find-identity -v -p codesigning 2>/dev/null | grep -q "VillainCaster Dev" && echo "VillainCaster Dev" || echo -)
 
 .PHONY: build run app install clean
 
@@ -14,7 +17,7 @@ app: build
 	mkdir -p $(BUNDLE)/Contents/MacOS
 	cp .build/release/$(APP) $(BUNDLE)/Contents/MacOS/
 	cp Resources/Info.plist $(BUNDLE)/Contents/
-	codesign --force --sign - $(BUNDLE)
+	codesign --force --sign "$(SIGN_IDENTITY)" $(BUNDLE)
 	@echo "Built $(BUNDLE)"
 
 install: app
