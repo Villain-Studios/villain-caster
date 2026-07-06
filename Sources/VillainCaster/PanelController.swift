@@ -11,6 +11,7 @@ private let inputSidePadding: CGFloat = 20
 
 final class LauncherPanel: NSPanel {
     var onScreenshot: (() -> Void)?
+    var onCancel: (() -> Void)?
 
     override var canBecomeKey: Bool { true }
 
@@ -21,6 +22,16 @@ final class LauncherPanel: NSPanel {
             return true
         }
         return super.performKeyEquivalent(with: event)
+    }
+
+    // Escape must close no matter which view has focus; the text field's
+    // delegate only sees it while the field editor is first responder.
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 { // Escape
+            onCancel?()
+            return
+        }
+        super.keyDown(with: event)
     }
 }
 
@@ -36,6 +47,10 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
     private var inlineCopyValue: String?
     /// Query restored on next open when the panel closed without executing.
     private var storedText: String?
+    /// Input line height for vertical centering — a taller frame makes
+    /// NSTextField top-align its text. Font is fixed, so compute once.
+    private lazy var fieldHeight: CGFloat = ceil(field.cell?.cellSize(forBounds:
+        NSRect(x: 0, y: 0, width: 100, height: 100)).height ?? 30)
 
     override init() {
         panel = LauncherPanel(
@@ -49,6 +64,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
         configureField()
         configureTable()
         panel.onScreenshot = { [weak self] in self?.captureScreenshot() }
+        panel.onCancel = { [weak self] in self?.hide() }
         engine.refreshApps()
     }
 
@@ -225,12 +241,13 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
     }
 
     /// Text worth restoring next time: an unfinished search. One-shot
-    /// lookups (math/currency/time — inline visible — and weather) are not.
+    /// lookups (math/currency/time — inline visible — weather, help) are not.
     private func restorableText() -> String? {
         let text = field.stringValue.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty,
               inlineResultField.isHidden,
-              !Weather.matches(text)
+              !Weather.matches(text),
+              !Help.matches(text)
         else { return nil }
         return field.stringValue
     }
@@ -254,10 +271,6 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
         frame.origin.y = top - totalHeight
         panel.setFrame(frame, display: true)
 
-        // Size the input to its actual line height and center it vertically —
-        // a taller frame makes NSTextField top-align the text.
-        let fieldHeight = ceil(field.cell?.cellSize(forBounds:
-            NSRect(x: 0, y: 0, width: 100, height: 100)).height ?? 30)
         let fieldY = totalHeight - inputHeight + (inputHeight - fieldHeight) / 2
         if inlineResultField.isHidden {
             field.frame = NSRect(x: inputSidePadding, y: fieldY,
@@ -332,6 +345,9 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
         case #selector(NSResponder.cancelOperation(_:)):
             hide()
             return true
+        case #selector(NSResponder.insertTab(_:)),
+             #selector(NSResponder.insertBacktab(_:)):
+            return true // keep focus in the input field
         default:
             return false
         }
@@ -387,7 +403,13 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        ResultRowView()
+        let identifier = NSUserInterfaceItemIdentifier("ResultRow")
+        if let reused = tableView.makeView(withIdentifier: identifier, owner: self) as? ResultRowView {
+            return reused
+        }
+        let rowView = ResultRowView()
+        rowView.identifier = identifier
+        return rowView
     }
 }
 

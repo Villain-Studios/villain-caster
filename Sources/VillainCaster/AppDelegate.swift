@@ -30,6 +30,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func statusItemClicked() {
         if NSApp.currentEvent?.type == .rightMouseUp {
             let menu = NSMenu()
+            let settingsItem = NSMenuItem(title: "Settings…",
+                                          action: #selector(openSettings),
+                                          keyEquivalent: ",")
+            settingsItem.target = self
+            menu.addItem(settingsItem)
+            menu.addItem(.separator())
             menu.addItem(NSMenuItem(title: "Quit VillainCaster",
                                     action: #selector(NSApplication.terminate(_:)),
                                     keyEquivalent: "q"))
@@ -40,5 +46,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             panelController.toggle()
         }
+    }
+
+    @objc private func openSettings() {
+        SettingsWindowController.shared.show()
     }
 }

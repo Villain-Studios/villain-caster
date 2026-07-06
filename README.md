@@ -4,16 +4,27 @@ Minimal Spotlight/Raycast replacement. Only the features you actually use.
 
 ## Features
 
-- **⌘Space** opens a single input field (nothing else)
-- **Fuzzy app search** — type `saf` → Safari, ⏎ launches
-- **Calculator** — `33 / 3`, `(2 + 3) * 4`, `2^10`, ⏎ copies result
-- **Currency** — `32 sek to eur` (ECB rates via frankfurter.dev, no API key)
-- **Weather** — `weather` (location via ipapi.co, data via open-meteo.com, no API key)
-- **Window management** — `maximize` fills the screen with the focused window,
-  `move window to next display` sends it to the other monitor (only listed when
-  a second display is connected). Requires Accessibility permission: the system
-  prompts on first use; grant it, then restart VillainCaster.
-- No file search. On purpose.
+Type `help` (or `?`) in the launcher for this list in-app.
+
+| Input | Does |
+|-------|------|
+| `wez` | Fuzzy app search, ⏎ launches |
+| `33 / 3` | Calculator — `+ - * / % ^ ( )`, result inline, ⏎ copies |
+| `32 sek to eur` | Currency — codes, names or symbols (`5 euro to dollar`); ECB rates via frankfurter.dev, exotic currencies via open.er-api.com |
+| `time in tokyo` | World clock — tz cities, `nyc`, `cet`; bare `time` = local |
+| `weather` | Current conditions + next 3 days (ipapi.co + open-meteo.com) |
+| `emoji shrug` | Emoji search, ⏎ copies |
+| `g` / `yt` / `gh` + query | Web search — Google, YouTube, GitHub |
+| `work email` | Snippets — copy your emails/phone/address; set values via menu bar icon → Settings… |
+| `maximize` | Fill screen with the focused window¹ |
+| `move window` | Send focused window to next display (only with 2+ monitors)¹ |
+| `sleep` / `lock` / `trash` / `dark` | Sleep Mac, lock screen, empty trash², toggle dark mode² |
+| `quit` | Quit VillainCaster |
+| *(empty)* | Your 3 most-used items (frecency: usage count with 7-day half-life) |
+
+¹ needs Accessibility permission — ² needs a one-time Automation approval
+
+No file search. On purpose. No API keys anywhere.
 
 ## Build & run
 

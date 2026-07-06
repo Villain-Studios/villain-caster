@@ -12,15 +12,34 @@ enum QueryOutput {
 private struct Command {
     let title: String
     let subtitle: String
-    let symbol: String
+    let icon: NSImage?
     let isAvailable: () -> Bool
     let run: () -> Void
+
+    init(title: String, subtitle: String, symbol: String,
+         isAvailable: @escaping () -> Bool, run: @escaping () -> Void) {
+        self.title = title
+        self.subtitle = subtitle
+        self.icon = symbolIcon(symbol, title)
+        self.isAvailable = isAvailable
+        self.run = run
+    }
+}
+
+/// SF Symbol at result-list size; build once, not per keystroke.
+func symbolIcon(_ name: String, _ description: String) -> NSImage? {
+    NSImage(systemSymbolName: name, accessibilityDescription: description)?
+        .withSymbolConfiguration(.init(pointSize: 16, weight: .regular))
 }
 
 final class QueryEngine {
     private let appIndex = AppIndex()
     private var generation = 0
     private var pendingNetworkWork: DispatchWorkItem?
+    /// App icons are surprisingly expensive to fetch; cache evicts itself
+    /// under memory pressure.
+    private let iconCache = NSCache<NSString, NSImage>()
+    private static let snippetIcon = symbolIcon("doc.on.clipboard", "Snippet")
 
     private let commands: [Command] = [
         Command(title: "Maximize Window",
@@ -79,6 +98,11 @@ final class QueryEngine {
             return
         }
 
+        if Help.matches(text) {
+            deliver(.list(Help.items()))
+            return
+        }
+
         if let currencyQuery = CurrencyQuery.parse(text) {
             deliver(.inline(display: "= …", copyValue: nil))
             debounced(gen) { finish in
@@ -112,6 +136,11 @@ final class QueryEngine {
             return
         }
 
+        if let webItem = WebSearch.match(text) {
+            deliver(.list([webItem]))
+            return
+        }
+
         // Frecency boost: items you actually launch outrank same-fuzzy-score
         // neighbors ("zen" → Zen Browser above an app literally named Zen),
         // and the boost fades for things not used in a while.
@@ -130,15 +159,29 @@ final class QueryEngine {
             let item = commandItem(command)
             scored.append((score + boost(item), item))
         }
+        for field in Snippets.fields {
+            guard Snippets.value(for: field.defaultsKey) != nil,
+                  let score = Fuzzy.score(query: text, target: field.title + " " + field.keywords)
+            else { continue }
+            let item = snippetItem(field)
+            scored.append((score + boost(item), item))
+        }
         scored.sort { $0.score > $1.score }
         deliver(.list(scored.prefix(8).map(\.item)))
     }
 
     // MARK: - Item builders
 
+    private func appIcon(forPath path: String) -> NSImage {
+        if let cached = iconCache.object(forKey: path as NSString) { return cached }
+        let icon = NSWorkspace.shared.icon(forFile: path)
+        iconCache.setObject(icon, forKey: path as NSString)
+        return icon
+    }
+
     private func appItem(_ entry: AppEntry) -> ResultItem {
         ResultItem(
-            icon: NSWorkspace.shared.icon(forFile: entry.url.path),
+            icon: appIcon(forPath: entry.url.path),
             title: entry.name,
             subtitle: nil,
             usageKey: "app:\(entry.url.path)",
@@ -166,14 +209,26 @@ final class QueryEngine {
     }
 
     private func commandItem(_ command: Command) -> ResultItem {
-        let icon = NSImage(systemSymbolName: command.symbol, accessibilityDescription: command.title)?
-            .withSymbolConfiguration(.init(pointSize: 16, weight: .regular))
-        return ResultItem(
-            icon: icon,
+        ResultItem(
+            icon: command.icon,
             title: command.title,
             subtitle: command.subtitle,
             usageKey: "command:\(command.title)",
             action: command.run
+        )
+    }
+
+    private func snippetItem(_ field: Snippets.Field) -> ResultItem {
+        ResultItem(
+            icon: Self.snippetIcon,
+            title: field.title,
+            subtitle: Snippets.value(for: field.defaultsKey),
+            usageKey: "snippet:\(field.defaultsKey)",
+            action: {
+                if let value = Snippets.value(for: field.defaultsKey) {
+                    Clipboard.copy(value)
+                }
+            }
         )
     }
 
@@ -192,6 +247,11 @@ final class QueryEngine {
                 guard let command = commands.first(where: { $0.title == title }),
                       command.isAvailable() else { continue }
                 items.append(commandItem(command))
+            } else if key.hasPrefix("snippet:") {
+                let defaultsKey = String(key.dropFirst(8))
+                guard let field = Snippets.fields.first(where: { $0.defaultsKey == defaultsKey }),
+                      Snippets.value(for: defaultsKey) != nil else { continue }
+                items.append(snippetItem(field))
             }
             if items.count == 3 { break }
         }
