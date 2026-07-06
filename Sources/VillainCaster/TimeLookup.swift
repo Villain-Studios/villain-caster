@@ -19,11 +19,9 @@ enum TimeLookup {
         guard let zone else { return nil }
 
         let now = Date()
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "HH:mm"
+        // Reused — creating DateFormatters per keystroke is expensive.
+        // Main-thread only, so mutating the timezone is safe.
         timeFormatter.timeZone = zone
-        let weekdayFormatter = DateFormatter()
-        weekdayFormatter.dateFormat = "EEE"
         weekdayFormatter.timeZone = zone
 
         let time = timeFormatter.string(from: now)
@@ -36,6 +34,18 @@ enum TimeLookup {
 
         return ("= \(time) \(weekdayFormatter.string(from: now)) · \(cityName) \(diffText)", time)
     }
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    private static let weekdayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE"
+        return formatter
+    }()
 
     /// Shorthands and cities that aren't tz-database city names.
     private static let aliases: [String: String] = [

@@ -3,6 +3,15 @@ import Foundation
 struct AppEntry {
     let name: String
     let url: URL
+    /// Lowercased name, precomputed once at scan time — fuzzy matching
+    /// runs on every keystroke over every app.
+    let searchChars: [Character]
+
+    init(name: String, url: URL) {
+        self.name = name
+        self.url = url
+        self.searchChars = Array(name.lowercased())
+    }
 }
 
 final class AppIndex {
@@ -28,9 +37,11 @@ final class AppIndex {
         let snapshot = apps
         lock.unlock()
 
+        let queryChars = Array(query.lowercased())
         return snapshot
             .compactMap { entry -> (score: Int, entry: AppEntry)? in
-                guard let score = Fuzzy.score(query: query, target: entry.name) else { return nil }
+                guard let score = Fuzzy.score(queryChars: queryChars, targetChars: entry.searchChars)
+                else { return nil }
                 return (score, entry)
             }
             .sorted { $0.score == $1.score ? $0.entry.name < $1.entry.name : $0.score > $1.score }
@@ -70,11 +81,14 @@ final class AppIndex {
 }
 
 enum Fuzzy {
+    static func score(query: String, target: String) -> Int? {
+        score(queryChars: Array(query.lowercased()), targetChars: Array(target.lowercased()))
+    }
+
     /// Subsequence match with bonuses for prefix, word-boundary and
     /// consecutive hits. Returns nil when the query is not a subsequence.
-    static func score(query: String, target: String) -> Int? {
-        let q = Array(query.lowercased())
-        let t = Array(target.lowercased())
+    /// Takes pre-lowercased char arrays so hot callers can precompute them.
+    static func score(queryChars q: [Character], targetChars t: [Character]) -> Int? {
         guard !q.isEmpty else { return nil }
 
         var score = 0

@@ -18,8 +18,9 @@ enum EmojiSearch {
                                subtitle: "e.g. \"emoji shrug\"", action: nil)]
         }
 
-        let scored = entries.compactMap { entry -> (score: Int, entry: Entry)? in
-            guard let score = Fuzzy.score(query: query, target: entry.name + " " + entry.keywords)
+        let queryChars = Array(query)
+        let scored = searchable.compactMap { entry, target -> (score: Int, entry: Entry)? in
+            guard let score = Fuzzy.score(queryChars: queryChars, targetChars: target)
             else { return nil }
             return (score, entry)
         }
@@ -33,6 +34,11 @@ enum EmojiSearch {
                            action: { Clipboard.copy(entry.emoji) })
             }
     }
+
+    /// Search targets precomputed once — names and keywords are already
+    /// lowercase in the list below.
+    private static let searchable: [(entry: Entry, target: [Character])] =
+        entries.map { ($0, Array($0.name + " " + $0.keywords)) }
 
     private static let entries: [Entry] = [
         // Smileys
