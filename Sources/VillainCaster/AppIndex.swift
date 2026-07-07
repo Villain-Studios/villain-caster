@@ -53,7 +53,7 @@ final class AppIndex {
             "/Applications",
             "/System/Applications",
             "/System/Applications/Utilities",
-            "/System/Library/CoreServices/Applications",
+            "/System/Library/CoreServices",
             "\(home)/Applications",
         ]
         var found: [String: AppEntry] = [:]
