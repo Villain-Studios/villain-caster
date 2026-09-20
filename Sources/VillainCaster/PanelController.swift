@@ -8,6 +8,8 @@ private let listTopPadding: CGFloat = 8
 private let listBottomPadding: CGFloat = 14
 private let listSidePadding: CGFloat = 14
 private let inputSidePadding: CGFloat = 20
+private let panelCornerRadius: CGFloat = 18
+private let screenshotPadding: CGFloat = 48
 
 final class LauncherPanel: NSPanel {
     var onScreenshot: (() -> Void)?
@@ -18,11 +20,19 @@ final class LauncherPanel: NSPanel {
     // Accessory apps have no Edit menu, so ⌘V/⌘C/⌘X/⌘A key equivalents
     // have nothing to dispatch them — route them to the field editor here.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command {
-            switch event.charactersIgnoringModifiers {
-            case "s":
-                onScreenshot?()
-                return true
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let key = event.charactersIgnoringModifiers?.lowercased()
+
+        // ⌘S / ⌘⇧S (Shift makes charactersIgnoringModifiers "S").
+        if mods.contains(.command),
+           !mods.contains(.option), !mods.contains(.control),
+           key == "s" {
+            onScreenshot?()
+            return true
+        }
+
+        if mods == .command {
+            switch key {
             case "v":
                 return NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: self)
             case "c":
@@ -51,8 +61,11 @@ final class LauncherPanel: NSPanel {
 
 final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
     private let panel: LauncherPanel
-    /// Hosts field/list inside Liquid Glass — NSGlassEffectView only
-    /// guarantees glass treatment for its contentView, not arbitrary subviews.
+    /// Rounded clip host — Liquid Glass blooms past its cornerRadius into a
+    /// rectangular rim that reads as a square halo on light desktops.
+    private let glassHost = NSView()
+    private let glass = NSGlassEffectView()
+    /// Field/list live here; NSGlassEffectView only glass-treats contentView.
     private let chrome = NSView()
     private let field = NSTextField()
     private let tableView = NSTableView()
@@ -85,21 +98,20 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
         engine.refreshApps()
     }
 
-    /// ⌘S: saves a PNG of the panel to the Desktop. Captures the screen
-    /// REGION under the panel (composited pixels — blur and what shows
-    /// through it, exactly what the eye sees). Window-only capture (-l)
-    /// would export transparency as an alpha channel and lose the blur.
-    /// Needs Screen Recording permission; falls back to a view render.
+    /// ⌘S / ⌘⇧S → Desktop PNG of the panel region (padded). Screen grab keeps
+    /// composited glass; window-only capture would lose the blur to alpha.
     private func captureScreenshot() {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         let url = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Desktop/villaincaster-\(formatter.string(from: Date())).png")
 
-        // Cocoa (bottom-left origin) → CG/screencapture (top-left origin).
-        let frame = panel.frame
+        let padded = panel.frame.insetBy(dx: -screenshotPadding, dy: -screenshotPadding)
+        let screen = panel.screen?.frame ?? NSScreen.screens.first?.frame ?? .zero
+        let clipped = padded.intersection(screen)
+        // Cocoa (bottom-left) → screencapture -R (top-left).
         let primaryHeight = NSScreen.screens.first?.frame.maxY ?? 0
-        let region = "\(Int(frame.minX)),\(Int(primaryHeight - frame.maxY)),\(Int(frame.width)),\(Int(frame.height))"
+        let region = "\(Int(clipped.minX)),\(Int(primaryHeight - clipped.maxY)),\(Int(clipped.width)),\(Int(clipped.height))"
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let task = Process()
@@ -149,20 +161,29 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.isOpaque = false
         panel.backgroundColor = .clear
+        panel.hasShadow = false // system shadow sits in clear corner pockets
         panel.hidesOnDeactivate = false
         panel.isMovableByWindowBackground = true
         panel.delegate = self
 
+        glassHost.wantsLayer = true
+        glassHost.layer?.cornerRadius = panelCornerRadius
+        glassHost.layer?.cornerCurve = .continuous
+        glassHost.layer?.masksToBounds = true
+        glassHost.autoresizingMask = [.width, .height]
+
         chrome.autoresizingMask = [.width, .height]
 
-        let glass = NSGlassEffectView()
-        glass.style = .clear
-        glass.cornerRadius = 18
+        // .regular keeps text legible; .clear washes out on bright desktops.
+        glass.style = .regular
+        glass.cornerRadius = panelCornerRadius
+        glass.autoresizingMask = [.width, .height]
         if #available(macOS 27.0, *) {
             glass.effectIsInteractive = true
         }
         glass.contentView = chrome
-        panel.contentView = glass
+        glassHost.addSubview(glass)
+        panel.contentView = glassHost
     }
 
     private func configureField() {
@@ -288,7 +309,10 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
         frame.size.height = totalHeight
         frame.origin.y = top - totalHeight
         panel.setFrame(frame, display: true)
-        chrome.frame = NSRect(origin: .zero, size: frame.size)
+        let bounds = NSRect(origin: .zero, size: frame.size)
+        glassHost.frame = bounds
+        glass.frame = bounds
+        chrome.frame = bounds
 
         let fieldY = totalHeight - inputHeight + (inputHeight - fieldHeight) / 2
         if inlineResultField.isHidden {
