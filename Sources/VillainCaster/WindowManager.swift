@@ -9,14 +9,29 @@ import ApplicationServices
 /// → Accessibility). First use triggers the system prompt.
 enum WindowManager {
 
-    /// Fills the window's current screen (visible frame, keeps menu bar/Dock).
+    /// PID of the app that was frontmost when the launcher executed a
+    /// command. Set by PanelController so we don't lose the target after hide.
+    static var targetPID: pid_t?
+
+    /// Fills the display under the menu bar and over the Dock (monitor
+    /// minus the top bar only — not macOS Full Screen / a new Space).
     @discardableResult
     static func maximizeFocusedWindow() -> Bool {
         guard ensureAccessibility() else { return false }
         guard let window = focusedWindow(), let axFrame = frame(of: window) else { return false }
         let cocoaFrame = axToCocoa(axFrame)
         guard let screen = screenContaining(cocoaFrame) else { return false }
-        setFrame(cocoaToAX(screen.visibleFrame), on: window)
+
+        let full = screen.frame
+        let visible = screen.visibleFrame
+        // Bottom at screen edge (covers Dock); top at visibleFrame.maxY (under menu bar).
+        let target = CGRect(
+            x: full.minX,
+            y: full.minY,
+            width: full.width,
+            height: visible.maxY - full.minY
+        )
+        setFrame(cocoaToAX(target), on: window)
         return true
     }
 
@@ -65,12 +80,21 @@ enum WindowManager {
     }
 
     private static func focusedWindow() -> AXUIElement? {
-        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
-        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        let pid = targetPID ?? NSWorkspace.shared.frontmostApplication?.processIdentifier
+        guard let pid else { return nil }
+        let axApp = AXUIElementCreateApplication(pid)
         var window: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &window) == .success
+        if AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &window) == .success,
+           window != nil {
+            return (window as! AXUIElement)
+        }
+        // Some apps (terminals) report no focused window — use the front window.
+        var windows: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windows) == .success,
+              let list = windows as? [AXUIElement],
+              let first = list.first
         else { return nil }
-        return (window as! AXUIElement)
+        return first
     }
 
     private static func frame(of window: AXUIElement) -> CGRect? {
@@ -89,13 +113,16 @@ enum WindowManager {
     private static func setFrame(_ rect: CGRect, on window: AXUIElement) {
         var position = rect.origin
         var size = rect.size
+        // Size → position → size → position (helps apps that clamp mid-update).
+        if let value = AXValueCreate(.cgSize, &size) {
+            AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, value)
+        }
         if let value = AXValueCreate(.cgPoint, &position) {
             AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, value)
         }
         if let value = AXValueCreate(.cgSize, &size) {
             AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, value)
         }
-        // Some apps clamp the size against the old position — set it again.
         if let value = AXValueCreate(.cgPoint, &position) {
             AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, value)
         }

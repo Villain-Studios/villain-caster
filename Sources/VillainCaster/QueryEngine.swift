@@ -43,7 +43,7 @@ final class QueryEngine {
 
     private let commands: [Command] = [
         Command(title: "Maximize Window",
-                subtitle: "Fill the screen with the focused window",
+                subtitle: "Monitor size minus the menu bar",
                 symbol: "macwindow",
                 isAvailable: { true },
                 run: { WindowManager.maximizeFocusedWindow() }),

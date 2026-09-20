@@ -441,12 +441,16 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
             return
         }
         let item = results[row]
+        // Capture before hide — frontmost stays the user's app while our
+        // nonactivating panel is key, but clear the target after running.
+        WindowManager.targetPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         hide()
         storedText = nil // executed — next open starts fresh
         if let key = item.usageKey {
             UsageStore.record(key)
         }
         item.action?()
+        WindowManager.targetPID = nil
     }
 
     @objc private func rowClicked() {

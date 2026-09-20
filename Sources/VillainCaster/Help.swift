@@ -19,7 +19,7 @@ enum Help {
             ("face.smiling", "emoji shrug", "Emoji search, ⏎ copies"),
             ("magnifyingglass", "g / yt / gh query", "Web search — Google, YouTube, GitHub"),
             ("doc.on.clipboard", "work email", "Snippets — set values via menu bar icon → Settings…"),
-            ("macwindow", "maximize", "Fill screen with the focused window"),
+            ("macwindow", "maximize", "Monitor size minus the menu bar"),
             ("rectangle.on.rectangle", "move window", "Send focused window to the next display"),
             ("moon.zzz", "sleep / lock / trash / dark", "Sleep Mac, lock screen, empty trash, toggle dark mode"),
             ("keyboard", "Esc close · ⌘S / ⌘⇧S screenshot", "Empty input shows your most-used items"),
