@@ -15,13 +15,15 @@ enum SystemActions {
     }
 
     static func emptyTrash() {
-        runAppleScript("tell application \"Finder\" to empty trash")
+        _ = runAppleScript("tell application \"Finder\" to empty trash")
     }
 
     /// Dock-style reopen: opens a window when Finder has none, otherwise
     /// brings an existing window forward. Plain activate() is a no-op when
-    /// Finder is running with zero windows.
-    static func openFinder() {
+    /// Finder is running with zero windows. Returns false if Automation is
+    /// denied or osascript fails — callers should fall back to activate().
+    @discardableResult
+    static func openFinder() -> Bool {
         runAppleScript("""
         tell application "Finder"
           reopen
@@ -31,7 +33,7 @@ enum SystemActions {
     }
 
     static func toggleDarkMode() {
-        runAppleScript("""
+        _ = runAppleScript("""
         tell application "System Events" to tell appearance preferences \
         to set dark mode to not dark mode
         """)
@@ -44,7 +46,17 @@ enum SystemActions {
         try? task.run()
     }
 
-    private static func runAppleScript(_ script: String) {
-        run("/usr/bin/osascript", ["-e", script])
+    @discardableResult
+    private static func runAppleScript(_ script: String) -> Bool {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        task.arguments = ["-e", script]
+        do {
+            try task.run()
+            task.waitUntilExit()
+            return task.terminationStatus == 0
+        } catch {
+            return false
+        }
     }
 }

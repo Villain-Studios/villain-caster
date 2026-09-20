@@ -195,9 +195,9 @@ final class QueryEngine {
     /// the default behavior would focus whichever one is already running.
     private static func launch(_ url: URL) {
         // Finder is always "running"; activate() alone shows nothing when it
-        // has no windows. Dock-style reopen opens or focuses a window.
-        if url.lastPathComponent == "Finder.app" {
-            SystemActions.openFinder()
+        // has no windows. Prefer Dock-style reopen; if Automation is denied,
+        // fall through to activate / openApplication.
+        if url.lastPathComponent == "Finder.app", SystemActions.openFinder() {
             return
         }
         if let running = NSWorkspace.shared.runningApplications
