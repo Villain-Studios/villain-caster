@@ -84,11 +84,7 @@ final class SettingsWindowController: NSWindowController {
         window?.center()
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
-        if #available(macOS 14.0, *) {
-            NSApp.activate()
-        } else {
-            NSApp.activate(ignoringOtherApps: true)
-        }
+        NSApp.activate()
     }
 
     @objc private func save() {

@@ -202,11 +202,7 @@ final class QueryEngine {
         }
         if let running = NSWorkspace.shared.runningApplications
             .first(where: { $0.bundleURL?.standardizedFileURL.path == url.standardizedFileURL.path }) {
-            if #available(macOS 14.0, *) {
-                running.activate()
-            } else {
-                running.activate(options: [])
-            }
+            running.activate()
             return
         }
         let configuration = NSWorkspace.OpenConfiguration()

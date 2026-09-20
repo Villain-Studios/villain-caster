@@ -11,6 +11,32 @@ private let inputSidePadding: CGFloat = 20
 private let panelCornerRadius: CGFloat = 18
 private let screenshotPadding: CGFloat = 48
 
+/// Clips Liquid Glass to a rounded shape. Declares corners via the macOS 27
+/// cornerConfiguration API and applies a matching layer mask so glass bloom
+/// can't draw a square halo on light desktops.
+private final class GlassClipView: NSView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerCurve = .continuous
+        layer?.masksToBounds = true
+        layer?.cornerRadius = panelCornerRadius
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var cornerConfiguration: NSViewCornerConfiguration? {
+        .uniformCorners(radius: .fixed(panelCornerRadius))
+    }
+
+    override func viewDidChangeEffectiveCornerRadii() {
+        super.viewDidChangeEffectiveCornerRadii()
+        layer?.cornerRadius = effectiveCornerRadii?.topLeft ?? panelCornerRadius
+    }
+}
+
 final class LauncherPanel: NSPanel {
     var onScreenshot: (() -> Void)?
     var onCancel: (() -> Void)?
@@ -63,7 +89,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
     private let panel: LauncherPanel
     /// Rounded clip host — Liquid Glass blooms past its cornerRadius into a
     /// rectangular rim that reads as a square halo on light desktops.
-    private let glassHost = NSView()
+    private let glassHost = GlassClipView()
     private let glass = NSGlassEffectView()
     /// Field/list live here; NSGlassEffectView only glass-treats contentView.
     private let chrome = NSView()
@@ -158,7 +184,10 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
 
     private func configurePanel() {
         panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        // canJoinAllApplications: float above other apps' full-screen Spaces.
+        panel.collectionBehavior = [
+            .canJoinAllSpaces, .canJoinAllApplications, .fullScreenAuxiliary, .transient
+        ]
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false // system shadow sits in clear corner pockets
@@ -166,21 +195,15 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
         panel.isMovableByWindowBackground = true
         panel.delegate = self
 
-        glassHost.wantsLayer = true
-        glassHost.layer?.cornerRadius = panelCornerRadius
-        glassHost.layer?.cornerCurve = .continuous
-        glassHost.layer?.masksToBounds = true
         glassHost.autoresizingMask = [.width, .height]
-
+        glassHost.invalidateCornerConfiguration()
         chrome.autoresizingMask = [.width, .height]
 
         // .regular keeps text legible; .clear washes out on bright desktops.
         glass.style = .regular
         glass.cornerRadius = panelCornerRadius
         glass.autoresizingMask = [.width, .height]
-        if #available(macOS 27.0, *) {
-            glass.effectIsInteractive = true
-        }
+        glass.effectIsInteractive = true
         glass.contentView = chrome
         glassHost.addSubview(glass)
         panel.contentView = glassHost
