@@ -18,6 +18,18 @@ enum SystemActions {
         runAppleScript("tell application \"Finder\" to empty trash")
     }
 
+    /// Dock-style reopen: opens a window when Finder has none, otherwise
+    /// brings an existing window forward. Plain activate() is a no-op when
+    /// Finder is running with zero windows.
+    static func openFinder() {
+        runAppleScript("""
+        tell application "Finder"
+          reopen
+          activate
+        end tell
+        """)
+    }
+
     static func toggleDarkMode() {
         runAppleScript("""
         tell application "System Events" to tell appearance preferences \

@@ -53,12 +53,17 @@ final class AppIndex {
             "/Applications",
             "/System/Applications",
             "/System/Applications/Utilities",
-            "/System/Library/CoreServices",
             "\(home)/Applications",
         ]
         var found: [String: AppEntry] = [:]
         for root in roots {
             collect(root, depth: 0, into: &found)
+        }
+        // Finder lives in CoreServices; index it directly rather than scanning
+        // the whole CoreServices tree, which clutters results.
+        let finder = "/System/Library/CoreServices/Finder.app"
+        if FileManager.default.fileExists(atPath: finder) {
+            found[finder] = AppEntry(name: "Finder", url: URL(fileURLWithPath: finder))
         }
         return Array(found.values)
     }

@@ -51,6 +51,9 @@ final class LauncherPanel: NSPanel {
 
 final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
     private let panel: LauncherPanel
+    /// Hosts field/list inside Liquid Glass — NSGlassEffectView only
+    /// guarantees glass treatment for its contentView, not arbitrary subviews.
+    private let chrome = NSView()
     private let field = NSTextField()
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
@@ -120,10 +123,9 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
     }
 
     private func captureViewRender(to url: URL) {
-        guard let contentView = panel.contentView else { return }
-        let bounds = contentView.bounds
-        guard let rep = contentView.bitmapImageRepForCachingDisplay(in: bounds) else { return }
-        contentView.cacheDisplay(in: bounds, to: rep)
+        let bounds = chrome.bounds
+        guard let rep = chrome.bitmapImageRepForCachingDisplay(in: bounds) else { return }
+        chrome.cacheDisplay(in: bounds, to: rep)
         guard let data = rep.representation(using: .png, properties: [:]) else { return }
         do {
             try data.write(to: url)
@@ -151,18 +153,16 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
         panel.isMovableByWindowBackground = true
         panel.delegate = self
 
-        let effect = NSVisualEffectView()
-        effect.material = .hudWindow
-        effect.state = .active
-        effect.blendingMode = .behindWindow
-        effect.wantsLayer = true
-        effect.layer?.cornerRadius = 18
-        effect.layer?.cornerCurve = .continuous
-        effect.layer?.masksToBounds = true
-        // Hairline rim for the glass edge.
-        effect.layer?.borderWidth = 1
-        effect.layer?.borderColor = NSColor.white.withAlphaComponent(0.14).cgColor
-        panel.contentView = effect
+        chrome.autoresizingMask = [.width, .height]
+
+        let glass = NSGlassEffectView()
+        glass.style = .clear
+        glass.cornerRadius = 18
+        if #available(macOS 27.0, *) {
+            glass.effectIsInteractive = true
+        }
+        glass.contentView = chrome
+        panel.contentView = glass
     }
 
     private func configureField() {
@@ -174,18 +174,22 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
         field.focusRingType = .none
         field.lineBreakMode = .byTruncatingTail
         field.delegate = self
-        panel.contentView?.addSubview(field)
+        chrome.addSubview(field)
 
-        divider.boxType = .separator
+        // Soft hairline — system .separator reads near-black on Liquid Glass.
+        divider.boxType = .custom
+        divider.titlePosition = .noTitle
+        divider.borderWidth = 0
+        divider.fillColor = NSColor.labelColor.withAlphaComponent(0.1)
         divider.isHidden = true
-        panel.contentView?.addSubview(divider)
+        chrome.addSubview(divider)
 
         inlineResultField.font = .systemFont(ofSize: 24, weight: .light)
         inlineResultField.textColor = .secondaryLabelColor
         inlineResultField.alignment = .right
         inlineResultField.lineBreakMode = .byTruncatingHead
         inlineResultField.isHidden = true
-        panel.contentView?.addSubview(inlineResultField)
+        chrome.addSubview(inlineResultField)
     }
 
     private func configureTable() {
@@ -214,7 +218,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
         scrollView.verticalScrollElasticity = .none
         scrollView.automaticallyAdjustsContentInsets = false
         scrollView.contentInsets = NSEdgeInsets()
-        panel.contentView?.addSubview(scrollView)
+        chrome.addSubview(scrollView)
     }
 
     // MARK: - Show / hide
@@ -284,6 +288,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
         frame.size.height = totalHeight
         frame.origin.y = top - totalHeight
         panel.setFrame(frame, display: true)
+        chrome.frame = NSRect(origin: .zero, size: frame.size)
 
         let fieldY = totalHeight - inputHeight + (inputHeight - fieldHeight) / 2
         if inlineResultField.isHidden {
@@ -298,7 +303,8 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
             field.frame = NSRect(x: inputSidePadding, y: fieldY,
                                  width: panelWidth - inputSidePadding * 2 - labelWidth - 12, height: fieldHeight)
         }
-        divider.frame = NSRect(x: 0, y: totalHeight - inputHeight - 1, width: panelWidth, height: 1)
+        divider.frame = NSRect(x: listSidePadding, y: totalHeight - inputHeight - 1,
+                               width: panelWidth - listSidePadding * 2, height: 1)
         divider.isHidden = rows == 0
         scrollView.frame = NSRect(x: listSidePadding, y: listBottomPadding,
                                   width: panelWidth - listSidePadding * 2, height: visibleListHeight)

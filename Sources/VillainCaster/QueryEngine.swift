@@ -194,6 +194,12 @@ final class QueryEngine {
     /// the same bundle id apart — e.g. Zen Browser vs Zen Twilight, where
     /// the default behavior would focus whichever one is already running.
     private static func launch(_ url: URL) {
+        // Finder is always "running"; activate() alone shows nothing when it
+        // has no windows. Dock-style reopen opens or focuses a window.
+        if url.lastPathComponent == "Finder.app" {
+            SystemActions.openFinder()
+            return
+        }
         if let running = NSWorkspace.shared.runningApplications
             .first(where: { $0.bundleURL?.standardizedFileURL.path == url.standardizedFileURL.path }) {
             if #available(macOS 14.0, *) {
