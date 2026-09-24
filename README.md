@@ -32,8 +32,24 @@ Type `help` (or `?`) in the launcher for this list in-app.
 
 ## Requirements
 
-- macOS 27 or later
-- Xcode 27 / Swift 6.4 toolchain (`swift --version`)
+- macOS 27 or later on Apple silicon
+- To build from source: Xcode 27 / Swift 6.4 toolchain (`swift --version`)
+
+## Install
+
+Download `Villain-Caster-<version>.zip` from
+[Releases](https://github.com/Villain-Studios/villain-caster/releases), unzip
+it and move **Villain Caster.app** to `/Applications`.
+
+The app isn't notarized by Apple (that needs a paid developer account), so
+macOS blocks the first launch:
+
+1. Open the app once; macOS says it can't verify it — click **Done**.
+2. System Settings → Privacy & Security → scroll to Security → **Open Anyway**
+   next to "Villain Caster", and confirm.
+
+Or, from Terminal: `xattr -dr com.apple.quarantine "/Applications/Villain Caster.app"`.
+Prefer to build it yourself? See below.
 
 ## Build & run
 
@@ -44,8 +60,6 @@ make install    # copy to /Applications and start it
 make icon       # re-render Resources/AppIcon.icns after editing AppIcon.svg
 make clean      # remove build output
 ```
-
-There are no prebuilt binaries; build from source.
 
 ### Code signing (optional)
 
@@ -115,30 +129,17 @@ System Settings → General → Login Items → add `/Applications/Villain Caste
 
 ## Releasing
 
-Maintainers only. Release builds are signed with a Developer ID, use the
-hardened runtime ([entitlements](Resources/VillainCaster.entitlements)), and
-are notarized by Apple so they open without Gatekeeper warnings.
-
-One-time setup (needs an [Apple Developer Program](https://developer.apple.com/programs/) membership):
-
-1. Xcode → Settings → Accounts → your team → Manage Certificates → **+** →
-   **Developer ID Application**.
-2. Create an app-specific password at [account.apple.com](https://account.apple.com)
-   → Sign-In and Security → App-Specific Passwords.
-3. Store notarization credentials in the keychain (prompts for the password):
-
-   ```sh
-   xcrun notarytool store-credentials villain-notary --apple-id <you@example.com> --team-id <TEAMID>
-   ```
-
-Each release: bump `CFBundleShortVersionString` / `CFBundleVersion` in
+Maintainers only. Bump `CFBundleShortVersionString` / `CFBundleVersion` in
 [Info.plist](Resources/Info.plist), then
 
 ```sh
-make release    # sign, notarize, staple → build/Villain-Caster-<version>.zip
+make release    # → build/Villain-Caster-<version>.zip
 ```
 
-and attach the zip to a GitHub release tagged `v<version>`.
+and attach the zip to a GitHub release tagged `v<version>`. Sign with the
+same `VillainCaster Dev` certificate every time: macOS keys permission grants
+to the signature, so users keep them across updates. Builds aren't notarized
+(that needs a paid Apple Developer ID).
 
 ## Contributing
 

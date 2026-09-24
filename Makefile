@@ -48,28 +48,18 @@ install: app
 	open "/Applications/$(APP_NAME).app"
 	@echo "Installed and started /Applications/$(APP_NAME).app"
 
-# Developer ID signing + notarization for a GitHub release (see README →
-# Releasing). Override DEVELOPER_ID / NOTARY_PROFILE on the command line.
-DEVELOPER_ID ?= $(shell security find-identity -v -p codesigning 2>/dev/null | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')
-NOTARY_PROFILE ?= villain-notary
+# Zip for a GitHub release. Not notarized (no paid Apple Developer ID), so
+# first launch needs Privacy & Security → Open Anyway. Signed with the stable
+# "VillainCaster Dev" identity when present so users' permission grants
+# survive updates.
 VERSION = $(shell /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
 ZIP = build/Villain-Caster-$(VERSION).zip
 
 release: app
-	@test -n "$(DEVELOPER_ID)" || { echo "No 'Developer ID Application' certificate in the keychain — see README → Releasing."; exit 1; }
-	codesign --force --options runtime --timestamp \
-		--entitlements Resources/VillainCaster.entitlements \
-		--sign "$(DEVELOPER_ID)" "$(BUNDLE)"
 	codesign --verify --strict --verbose=2 "$(BUNDLE)"
 	rm -f "$(ZIP)"
 	ditto -c -k --keepParent "$(BUNDLE)" "$(ZIP)"
-	xcrun notarytool submit "$(ZIP)" --keychain-profile "$(NOTARY_PROFILE)" --wait
-	xcrun stapler staple "$(BUNDLE)"
-	# Re-zip so the download carries the stapled ticket (works offline).
-	rm -f "$(ZIP)"
-	ditto -c -k --keepParent "$(BUNDLE)" "$(ZIP)"
-	spctl --assess --type execute --verbose=2 "$(BUNDLE)"
-	@echo "Notarized $(ZIP)"
+	@echo "Wrote $(ZIP)"
 
 clean:
 	rm -rf .build build
