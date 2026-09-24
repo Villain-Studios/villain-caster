@@ -19,19 +19,8 @@ enum WindowManager {
     static func maximizeFocusedWindow() -> Bool {
         guard ensureAccessibility() else { return false }
         guard let window = focusedWindow(), let axFrame = frame(of: window) else { return false }
-        let cocoaFrame = axToCocoa(axFrame)
-        guard let screen = screenContaining(cocoaFrame) else { return false }
-
-        let full = screen.frame
-        let visible = screen.visibleFrame
-        // Bottom at screen edge (covers Dock); top at visibleFrame.maxY (under menu bar).
-        let target = CGRect(
-            x: full.minX,
-            y: full.minY,
-            width: full.width,
-            height: visible.maxY - full.minY
-        )
-        setFrame(cocoaToAX(target), on: window)
+        guard let screen = screenContaining(axFrame: axFrame) else { return false }
+        setFrame(maximizeRect(for: screen), on: window)
         return true
     }
 
@@ -43,30 +32,63 @@ enum WindowManager {
         guard screens.count > 1 else { return false }
         guard ensureAccessibility() else { return false }
         guard let window = focusedWindow(), let axFrame = frame(of: window) else { return false }
-
-        let cocoaFrame = axToCocoa(axFrame)
-        guard let currentScreen = screenContaining(cocoaFrame),
+        guard let currentScreen = screenContaining(axFrame: axFrame),
               let currentIndex = screens.firstIndex(of: currentScreen) else { return false }
-        let target = screens[(currentIndex + 1) % screens.count].visibleFrame
-        let source = currentScreen.visibleFrame
 
-        let size = CGSize(width: min(cocoaFrame.width, target.width),
-                          height: min(cocoaFrame.height, target.height))
-        // Preserve the window's relative position on the new screen.
-        let relX = source.width > cocoaFrame.width
-            ? (cocoaFrame.minX - source.minX) / (source.width - cocoaFrame.width) : 0
-        let relY = source.height > cocoaFrame.height
-            ? (cocoaFrame.minY - source.minY) / (source.height - cocoaFrame.height) : 0
-        let origin = CGPoint(
-            x: target.minX + relX.clamped01 * (target.width - size.width),
-            y: target.minY + relY.clamped01 * (target.height - size.height)
+        let sourceAX = cgBounds(for: currentScreen) ?? cocoaToAX(currentScreen.visibleFrame)
+        let targetScreen = screens[(currentIndex + 1) % screens.count]
+        let targetAX = cgBounds(for: targetScreen) ?? cocoaToAX(targetScreen.visibleFrame)
+
+        let size = CGSize(
+            width: min(axFrame.width, targetAX.width),
+            height: min(axFrame.height, targetAX.height)
         )
-        setFrame(cocoaToAX(CGRect(origin: origin, size: size)), on: window)
+        let relX = sourceAX.width > axFrame.width
+            ? (axFrame.minX - sourceAX.minX) / (sourceAX.width - axFrame.width) : 0
+        let relY = sourceAX.height > axFrame.height
+            ? (axFrame.minY - sourceAX.minY) / (sourceAX.height - axFrame.height) : 0
+        let origin = CGPoint(
+            x: targetAX.minX + relX.clamped01 * (targetAX.width - size.width),
+            y: targetAX.minY + relY.clamped01 * (targetAX.height - size.height)
+        )
+        setFrame(CGRect(origin: origin, size: size), on: window)
         return true
     }
 
     static var hasSecondDisplay: Bool {
         NSScreen.screens.count > 1
+    }
+
+    // MARK: - Geometry (AX / Quartz space)
+
+    /// Monitor minus menu bar, in AX coordinates (CGDisplayBounds-based).
+    private static func maximizeRect(for screen: NSScreen) -> CGRect {
+        let bounds = cgBounds(for: screen) ?? cocoaToAX(screen.frame)
+        let menuGap = max(0, screen.frame.maxY - screen.visibleFrame.maxY)
+        return CGRect(
+            x: bounds.minX,
+            y: bounds.minY + menuGap,
+            width: bounds.width,
+            height: bounds.height - menuGap
+        )
+    }
+
+    private static func cgBounds(for screen: NSScreen) -> CGRect? {
+        guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+        else { return nil }
+        return CGDisplayBounds(CGDirectDisplayID(number.uint32Value))
+    }
+
+    private static func screenContaining(axFrame: CGRect) -> NSScreen? {
+        let center = CGPoint(x: axFrame.midX, y: axFrame.midY)
+        if let exact = NSScreen.screens.first(where: { cgBounds(for: $0)?.contains(center) == true }) {
+            return exact
+        }
+        return NSScreen.screens.max { a, b in
+            let aArea = cgBounds(for: a)?.intersection(axFrame).area ?? 0
+            let bArea = cgBounds(for: b)?.intersection(axFrame).area ?? 0
+            return aArea < bArea
+        } ?? NSScreen.main
     }
 
     // MARK: - Accessibility plumbing
@@ -110,13 +132,11 @@ enum WindowManager {
         return CGRect(origin: position, size: size)
     }
 
+    /// Move onto the destination display first, then size — size-first gets
+    /// clamped when the window still sits on another screen (multi-monitor).
     private static func setFrame(_ rect: CGRect, on window: AXUIElement) {
         var position = rect.origin
         var size = rect.size
-        // Size → position → size → position (helps apps that clamp mid-update).
-        if let value = AXValueCreate(.cgSize, &size) {
-            AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, value)
-        }
         if let value = AXValueCreate(.cgPoint, &position) {
             AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, value)
         }
@@ -125,32 +145,21 @@ enum WindowManager {
         }
         if let value = AXValueCreate(.cgPoint, &position) {
             AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, value)
+        }
+        if let value = AXValueCreate(.cgSize, &size) {
+            AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, value)
         }
     }
 
-    // MARK: - Coordinate conversion
-    // AX uses a top-left origin (y grows down, relative to the primary
-    // screen's top edge); Cocoa uses bottom-left (y grows up). The mapping is
-    // symmetric around the primary screen's height.
+    // MARK: - Cocoa ↔ AX (fallback when CGDisplayBounds is unavailable)
 
     private static var primaryHeight: CGFloat {
         NSScreen.screens.first?.frame.maxY ?? 0
     }
 
-    private static func axToCocoa(_ rect: CGRect) -> CGRect {
-        CGRect(x: rect.minX, y: primaryHeight - rect.minY - rect.height,
-               width: rect.width, height: rect.height)
-    }
-
     private static func cocoaToAX(_ rect: CGRect) -> CGRect {
         CGRect(x: rect.minX, y: primaryHeight - rect.minY - rect.height,
                width: rect.width, height: rect.height)
-    }
-
-    private static func screenContaining(_ cocoaFrame: CGRect) -> NSScreen? {
-        NSScreen.screens.max { a, b in
-            a.frame.intersection(cocoaFrame).area < b.frame.intersection(cocoaFrame).area
-        } ?? NSScreen.main
     }
 }
 
