@@ -16,7 +16,7 @@ struct CurrencyQuery {
         func group(_ i: Int) -> String {
             String(text[Range(match.range(at: i), in: text)!])
         }
-        guard let amount = Double(group(1).replacingOccurrences(of: ",", with: ".")),
+        guard let amount = Double(Calculator.normalizeDecimals(group(1))),
               let from = Currency.normalize(group(2)),
               let to = Currency.normalize(group(3))
         else { return nil }

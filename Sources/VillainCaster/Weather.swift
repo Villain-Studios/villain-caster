@@ -1,8 +1,11 @@
 import Foundation
 
 enum Weather {
+    /// Only a query that starts with "weather", so "g weather berlin" stays
+    /// a web search.
     static func matches(_ text: String) -> Bool {
-        text.lowercased().contains("weather")
+        let lower = text.lowercased()
+        return lower == "weather" || lower.hasPrefix("weather ")
     }
 
     /// Location from IP (ipapi.co), then current conditions from open-meteo.
@@ -70,7 +73,8 @@ enum Weather {
         weekdayFormatter.dateFormat = "EEEE"
 
         var rows: [ResultItem] = []
-        for i in 1..<min(4, dates.count, codeNumbers.count, highs.count, lows.count) {
+        let days = min(4, dates.count, codeNumbers.count, highs.count, lows.count)
+        for i in stride(from: 1, to: days, by: 1) { // tolerates short/empty arrays
             let (emoji, description) = describe(codeNumbers[i].intValue)
             let weekday = dateParser.date(from: dates[i]).map(weekdayFormatter.string(from:)) ?? dates[i]
             rows.append(ResultItem(

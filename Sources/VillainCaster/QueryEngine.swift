@@ -13,14 +13,18 @@ private struct Command {
     let title: String
     let subtitle: String
     let icon: NSImage?
+    /// Irreversible — never offered in the empty-query list, where row 0
+    /// is preselected and a stray ⌘Space ⏎ would run it.
+    let isDestructive: Bool
     let isAvailable: () -> Bool
     let run: () -> Void
 
-    init(title: String, subtitle: String, symbol: String,
+    init(title: String, subtitle: String, symbol: String, isDestructive: Bool = false,
          isAvailable: @escaping () -> Bool, run: @escaping () -> Void) {
         self.title = title
         self.subtitle = subtitle
         self.icon = symbolIcon(symbol, title)
+        self.isDestructive = isDestructive
         self.isAvailable = isAvailable
         self.run = run
     }
@@ -36,6 +40,8 @@ final class QueryEngine {
     private let appIndex = AppIndex()
     private var generation = 0
     private var pendingNetworkWork: DispatchWorkItem?
+    /// True while the current query's network result hasn't arrived yet.
+    private(set) var isLoading = false
     /// App icons are surprisingly expensive to fetch; cache evicts itself
     /// under memory pressure.
     private let iconCache = NSCache<NSString, NSImage>()
@@ -65,6 +71,7 @@ final class QueryEngine {
         Command(title: "Empty Trash",
                 subtitle: "Ask Finder to empty the trash",
                 symbol: "trash",
+                isDestructive: true,
                 isAvailable: { true },
                 run: { SystemActions.emptyTrash() }),
         Command(title: "Toggle Dark Mode",
@@ -90,6 +97,7 @@ final class QueryEngine {
         generation += 1
         let gen = generation
         pendingNetworkWork?.cancel()
+        isLoading = false
 
         let text = raw.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else {
@@ -145,29 +153,28 @@ final class QueryEngine {
         // neighbors ("zen" → Zen Browser above an app literally named Zen),
         // and the boost fades for things not used in a while.
         let frecency = UsageStore.decayedAll()
-        func boost(_ item: ResultItem) -> Int {
-            guard let key = item.usageKey else { return 0 }
-            return Int(min(frecency[key] ?? 0, 20) * 10)
+        func boost(_ usageKey: String) -> Int {
+            Int(min(frecency[usageKey] ?? 0, 20) * 10)
         }
 
-        var scored: [(score: Int, item: ResultItem)] = appIndex.searchScored(text).map { score, entry in
-            let item = appItem(entry)
-            return (score + boost(item), item)
+        // Rank lightweight candidates first; build rows (and fetch app icons)
+        // only for the few that are shown.
+        var scored: [(score: Int, title: String, make: () -> ResultItem)] = []
+        for (score, entry) in appIndex.searchScored(text) {
+            scored.append((score + boost("app:\(entry.url.path)"), entry.name, { self.appItem(entry) }))
         }
         for command in commands where command.isAvailable() {
             guard let score = Fuzzy.score(query: text, target: command.title) else { continue }
-            let item = commandItem(command)
-            scored.append((score + boost(item), item))
+            scored.append((score + boost("command:\(command.title)"), command.title, { self.commandItem(command) }))
         }
         for field in Snippets.fields {
             guard Snippets.value(for: field.defaultsKey) != nil,
                   let score = Fuzzy.score(query: text, target: field.title + " " + field.keywords)
             else { continue }
-            let item = snippetItem(field)
-            scored.append((score + boost(item), item))
+            scored.append((score + boost("snippet:\(field.defaultsKey)"), field.title, { self.snippetItem(field) }))
         }
-        scored.sort { $0.score > $1.score }
-        deliver(.list(scored.prefix(8).map(\.item)))
+        scored.sort { $0.score == $1.score ? $0.title < $1.title : $0.score > $1.score }
+        deliver(.list(scored.prefix(8).map { $0.make() }))
     }
 
     // MARK: - Item builders
@@ -247,7 +254,7 @@ final class QueryEngine {
             } else if key.hasPrefix("command:") {
                 let title = String(key.dropFirst(8))
                 guard let command = commands.first(where: { $0.title == title }),
-                      command.isAvailable() else { continue }
+                      !command.isDestructive, command.isAvailable() else { continue }
                 items.append(commandItem(command))
             } else if key.hasPrefix("snippet:") {
                 let defaultsKey = String(key.dropFirst(8))
@@ -269,11 +276,13 @@ final class QueryEngine {
             fetch { output in
                 DispatchQueue.main.async {
                     guard let self, gen == self.generation else { return }
+                    self.isLoading = false
                     deliver(output)
                 }
             }
         }
         pendingNetworkWork = work
+        isLoading = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
     }
 }

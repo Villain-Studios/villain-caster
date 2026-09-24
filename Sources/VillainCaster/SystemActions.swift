@@ -15,7 +15,7 @@ enum SystemActions {
     }
 
     static func emptyTrash() {
-        _ = runAppleScript("tell application \"Finder\" to empty trash")
+        runAppleScriptInBackground("tell application \"Finder\" to empty trash")
     }
 
     /// Dock-style reopen: opens a window when Finder has none, otherwise
@@ -33,7 +33,7 @@ enum SystemActions {
     }
 
     static func toggleDarkMode() {
-        _ = runAppleScript("""
+        runAppleScriptInBackground("""
         tell application "System Events" to tell appearance preferences \
         to set dark mode to not dark mode
         """)
@@ -44,6 +44,12 @@ enum SystemActions {
         task.executableURL = URL(fileURLWithPath: path)
         task.arguments = arguments
         try? task.run()
+    }
+
+    /// Fire-and-forget: osascript takes tens of ms, and the first run blocks
+    /// on the Automation prompt — keep that off the main thread.
+    private static func runAppleScriptInBackground(_ script: String) {
+        DispatchQueue.global(qos: .userInitiated).async { runAppleScript(script) }
     }
 
     @discardableResult

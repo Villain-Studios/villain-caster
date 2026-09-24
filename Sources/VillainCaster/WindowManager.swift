@@ -35,9 +35,10 @@ enum WindowManager {
         guard let currentScreen = screenContaining(axFrame: axFrame),
               let currentIndex = screens.firstIndex(of: currentScreen) else { return false }
 
-        let sourceAX = cgBounds(for: currentScreen) ?? cocoaToAX(currentScreen.visibleFrame)
-        let targetScreen = screens[(currentIndex + 1) % screens.count]
-        let targetAX = cgBounds(for: targetScreen) ?? cocoaToAX(targetScreen.visibleFrame)
+        // Usable area below the menu bar, so a maximized window stays fully
+        // on-screen when the target display is shorter.
+        let sourceAX = maximizeRect(for: currentScreen)
+        let targetAX = maximizeRect(for: screens[(currentIndex + 1) % screens.count])
 
         let size = CGSize(
             width: min(axFrame.width, targetAX.width),

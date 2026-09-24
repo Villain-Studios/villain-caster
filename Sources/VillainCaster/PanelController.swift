@@ -43,8 +43,9 @@ final class LauncherPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
 
-    // Accessory apps have no Edit menu, so ⌘V/⌘C/⌘X/⌘A key equivalents
-    // have nothing to dispatch them — route them to the field editor here.
+    // The main menu's Edit items only fire while the app is active; this
+    // nonactivating panel is key without activating us, so route
+    // ⌘V/⌘C/⌘X/⌘A to the field editor here.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let key = event.charactersIgnoringModifiers?.lowercased()
@@ -101,6 +102,9 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
     private let engine = QueryEngine()
     private var results: [ResultItem] = []
     private var inlineCopyValue: String?
+    /// ⏎ pressed while an inline lookup (currency) was still loading: copy
+    /// the value when it arrives instead of silently copying nothing.
+    private var copyWhenReady = false
     /// Query restored on next open when the panel closed without executing.
     private var storedText: String?
     /// Input line height for vertical centering — a taller frame makes
@@ -152,7 +156,6 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
                 guard let self else { return }
                 if captured {
                     self.showScreenshotFeedback("📸 saved to Desktop")
-                    NSLog("Villain Caster screenshot (screen grab): \(url.path)")
                 } else {
                     self.captureViewRender(to: url)
                 }
@@ -168,7 +171,6 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
         do {
             try data.write(to: url)
             showScreenshotFeedback("📸 saved (no blur — grant Screen Recording)")
-            NSLog("Villain Caster screenshot (view render): \(url.path)")
         } catch {
             NSLog("Villain Caster screenshot failed: \(error)")
         }
@@ -285,16 +287,14 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
             display: false
         )
         field.stringValue = storedText ?? ""
-        results = []
-        inlineCopyValue = nil
-        inlineResultField.isHidden = true
-        tableView.reloadData()
-        relayout()
+        engine.refreshApps()
+        // Restored query or empty → most-used items. Every query path
+        // delivers synchronously at least once, so the panel appears at its
+        // final size.
+        runQuery()
         panel.makeKeyAndOrderFront(nil)
         // Focusing selects any restored text, so typing replaces it.
         panel.makeFirstResponder(field)
-        engine.refreshApps()
-        runQuery() // restored query or empty → most-used items
     }
 
     func hide() {
@@ -331,7 +331,9 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
         let top = frame.maxY
         frame.size.height = totalHeight
         frame.origin.y = top - totalHeight
-        panel.setFrame(frame, display: true)
+        if frame != panel.frame {
+            panel.setFrame(frame, display: true)
+        }
         let bounds = NSRect(origin: .zero, size: frame.size)
         glassHost.frame = bounds
         glass.frame = bounds
@@ -372,8 +374,13 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
     }
 
     private func runQuery() {
+        copyWhenReady = false
         engine.query(field.stringValue) { [weak self] output in
             guard let self else { return }
+            if self.copyWhenReady, case .inline(_, let copyValue?) = output {
+                self.copyWhenReady = false
+                Clipboard.copy(copyValue)
+            }
             switch output {
             case .empty:
                 self.results = []
@@ -433,6 +440,12 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
             hide()
             storedText = nil
             Clipboard.copy(copyValue)
+            return
+        }
+        if !inlineResultField.isHidden, engine.isLoading {
+            copyWhenReady = true
+            hide()
+            storedText = nil
             return
         }
         let row = tableView.selectedRow >= 0 ? tableView.selectedRow : 0

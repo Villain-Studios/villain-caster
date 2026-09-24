@@ -39,9 +39,9 @@ icon:
 	iconutil -c icns $(ICONSET) -o Resources/AppIcon.icns
 	@echo "Wrote Resources/AppIcon.icns"
 
+# Also removes the bundle name used before the "Villain Caster" rename.
 install: app
 	-pkill -x $(APP)
-	# Bundle name before the "Villain Caster" rename.
 	rm -rf "/Applications/$(APP).app"
 	rm -rf "/Applications/$(APP_NAME).app"
 	cp -R "$(BUNDLE)" /Applications/

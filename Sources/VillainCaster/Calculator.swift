@@ -9,10 +9,24 @@ enum Calculator {
         guard input.rangeOfCharacter(from: .decimalDigits) != nil else { return nil }
         // Require an operator so bare numbers don't produce a pointless result.
         guard input.rangeOfCharacter(from: CharacterSet(charactersIn: "+-*/^%(")) != nil else { return nil }
+        // The parser recurses per "(" / unary "-"; cap input so a pasted
+        // wall of parentheses can't overflow the stack.
+        guard input.count <= 1000 else { return nil }
 
-        var parser = Parser(input.replacingOccurrences(of: ",", with: "."))
+        var parser = Parser(normalizeDecimals(input))
         guard let value = parser.parse(), value.isFinite else { return nil }
         return format(value)
+    }
+
+    /// Commas → decimal points, except in "." locales where a comma followed
+    /// by exactly three digits is a thousands separator ("1,000" = 1000).
+    static func normalizeDecimals(_ input: String) -> String {
+        var text = input
+        if Locale.current.decimalSeparator != "," {
+            text = text.replacingOccurrences(of: #"(?<=\d),(?=\d{3}(?!\d))"#, with: "",
+                                             options: .regularExpression)
+        }
+        return text.replacingOccurrences(of: ",", with: ".")
     }
 
     static func format(_ value: Double) -> String {

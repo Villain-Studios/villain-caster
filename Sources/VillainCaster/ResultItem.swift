@@ -4,7 +4,8 @@ struct ResultItem {
     var icon: NSImage?
     var title: String
     var subtitle: String?
-    /// Stable id for usage tracking ("app:<path>" / "command:<title>");
+    /// Stable id for usage tracking ("app:<path>" / "command:<title>" /
+    /// "snippet:<defaultsKey>");
     /// nil for untracked rows like weather or loading placeholders.
     var usageKey: String? = nil
     var action: (() -> Void)?
@@ -19,9 +20,13 @@ enum UsageStore {
     private static let legacyKey = "usageCounts"
     private static let halfLife: Double = 7 * 24 * 3600
 
+    /// Below this an entry no longer affects ranking (one launch, ~6 weeks
+    /// unused); pruned so the store doesn't grow forever.
+    private static let pruneBelow = 0.01
+
     static func record(_ id: String) {
-        var entries = load()
         let now = Date().timeIntervalSince1970
+        var entries = load().filter { decayedScore($0.value, now: now) >= pruneBelow }
         let current = entries[id].map { decayedScore($0, now: now) } ?? 0
         entries[id] = [current + 1, now]
         UserDefaults.standard.set(entries, forKey: defaultsKey)

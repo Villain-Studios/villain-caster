@@ -32,27 +32,23 @@ final class AppIndex {
         }
     }
 
+    /// Unsorted matches; the caller ranks them together with commands.
     func searchScored(_ query: String) -> [(score: Int, entry: AppEntry)] {
         lock.lock()
         let snapshot = apps
         lock.unlock()
 
         let queryChars = Array(query.lowercased())
-        return snapshot
-            .compactMap { entry -> (score: Int, entry: AppEntry)? in
-                guard let score = Fuzzy.score(queryChars: queryChars, targetChars: entry.searchChars)
-                else { return nil }
-                return (score, entry)
-            }
-            .sorted { $0.score == $1.score ? $0.entry.name < $1.entry.name : $0.score > $1.score }
+        return snapshot.compactMap { entry in
+            Fuzzy.score(queryChars: queryChars, targetChars: entry.searchChars).map { ($0, entry) }
+        }
     }
 
     private static func scanAll() -> [AppEntry] {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let roots = [
             "/Applications",
-            "/System/Applications",
-            "/System/Applications/Utilities",
+            "/System/Applications", // includes Utilities via recursion
             "\(home)/Applications",
         ]
         var found: [String: AppEntry] = [:]
