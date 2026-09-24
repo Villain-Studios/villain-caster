@@ -1,3 +1,5 @@
+<p align="center"><img src="Resources/AppIcon.svg" width="160" alt="Villain Caster icon"></p>
+
 # Villain Caster
 
 Minimal Spotlight/Raycast replacement for macOS. Only the features you actually use.
@@ -39,6 +41,7 @@ Type `help` (or `?`) in the launcher for this list in-app.
 make run        # build + run directly (dev)
 make app        # build "build/Villain Caster.app"
 make install    # copy to /Applications and start it
+make icon       # re-render Resources/AppIcon.icns after editing AppIcon.svg
 make clean      # remove build output
 ```
 
@@ -70,12 +73,13 @@ Then start Villain Caster.
 | ↑ / ↓ | move selection |
 | ⏎ | launch app / copy result |
 | Esc | close |
-| ⌘S | save screenshot of the panel to Desktop³ |
+| ⌘S / ⌘⇧S | save screenshot of the panel to Desktop³ |
 
 ³ with Screen Recording permission the glass blur is captured; without it you
 get a flat render of the panel
 
-Right-click the menu bar icon for Settings… and Quit.
+Left-click the lens in the menu bar to toggle the panel; right-click it for
+Settings… and Quit.
 
 ## Permissions
 
@@ -100,8 +104,10 @@ type the matching query:
 | `weather` | [open-meteo.com](https://open-meteo.com) | approximate latitude/longitude |
 | `g` / `yt` / `gh` | Google, YouTube, GitHub | your search, opened in your browser |
 
-Snippet values and usage counts are stored locally in UserDefaults
-(`com.villain.villaincaster`).
+Snippet values and usage history (for ranking) are stored locally in
+UserDefaults (`com.villain.villaincaster`). `make run` starts the bare binary,
+which uses its own defaults domain, so it doesn't share those with the
+installed app.
 
 ## Autostart
 
