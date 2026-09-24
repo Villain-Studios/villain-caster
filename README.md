@@ -78,7 +78,7 @@ Then start Villain Caster.
 ³ with Screen Recording permission the glass blur is captured; without it you
 get a flat render of the panel
 
-Left-click the lens in the menu bar to toggle the panel; right-click it for
+Left-click the mask in the menu bar to toggle the panel; right-click it for
 Settings… and Quit.
 
 ## Permissions
