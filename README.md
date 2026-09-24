@@ -37,7 +37,7 @@ Type `help` (or `?`) in the launcher for this list in-app.
 
 ## Install
 
-Download `Villain-Caster-<version>.zip` from
+Download `Villain-Caster-<version>-macos-arm64.zip` from
 [Releases](https://github.com/Villain-Studios/villain-caster/releases), unzip
 it and move **Villain Caster.app** to `/Applications`.
 
@@ -133,7 +133,7 @@ Maintainers only. Bump `CFBundleShortVersionString` / `CFBundleVersion` in
 [Info.plist](Resources/Info.plist), then
 
 ```sh
-make release    # → build/Villain-Caster-<version>.zip
+make release    # → build/Villain-Caster-<version>-macos-arm64.zip
 ```
 
 and attach the zip to a GitHub release tagged `v<version>`. Sign with the
