@@ -7,7 +7,9 @@
     <key>CFBundleIdentifier</key>
     <string>com.villain.villaincaster</string>
     <key>CFBundleName</key>
-    <string>VillainCaster</string>
+    <string>Villain Caster</string>
+    <key>CFBundleDisplayName</key>
+    <string>Villain Caster</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

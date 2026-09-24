@@ -15,14 +15,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let registered = hotKey.register(keyCode: UInt32(kVK_Space), modifiers: UInt32(cmdKey))
         if !registered {
-            NSLog("VillainCaster: could not register ⌘Space. Disable Spotlight's shortcut in System Settings → Keyboard → Keyboard Shortcuts → Spotlight.")
+            NSLog("Villain Caster: could not register ⌘Space. Disable Spotlight's shortcut in System Settings → Keyboard → Keyboard Shortcuts → Spotlight.")
         }
     }
 
     private func setUpStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         guard let button = statusItem.button else { return }
-        button.image = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "VillainCaster")
+        button.image = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "Villain Caster")
         button.target = self
         button.action = #selector(statusItemClicked)
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -37,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settingsItem.target = self
             menu.addItem(settingsItem)
             menu.addItem(.separator())
-            menu.addItem(NSMenuItem(title: "Quit VillainCaster",
+            menu.addItem(NSMenuItem(title: "Quit Villain Caster",
                                     action: #selector(NSApplication.terminate(_:)),
                                     keyEquivalent: "q"))
             // Attach the menu only for this click so left-click keeps toggling the panel.

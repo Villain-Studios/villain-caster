@@ -1,4 +1,4 @@
-# VillainCaster
+# Villain Caster
 
 Minimal Spotlight/Raycast replacement for macOS. Only the features you actually use.
 
@@ -23,7 +23,7 @@ Type `help` (or `?`) in the launcher for this list in-app.
 | `maximize` | Resize the focused window to the monitor minus the menu bar¹ |
 | `move window` | Send focused window to next display (only with 2+ monitors)¹ |
 | `sleep` / `lock` / `trash` / `dark` | Sleep Mac, lock screen, empty trash², toggle dark mode² |
-| `quit` | Quit VillainCaster |
+| `quit` | Quit Villain Caster |
 | *(empty)* | Your 3 most-used items (frecency: usage count with 7-day half-life) |
 
 ¹ needs Accessibility permission — ² needs a one-time Automation approval
@@ -37,7 +37,7 @@ Type `help` (or `?`) in the launcher for this list in-app.
 
 ```sh
 make run        # build + run directly (dev)
-make app        # build build/VillainCaster.app
+make app        # build "build/Villain Caster.app"
 make install    # copy to /Applications and start it
 make clean      # remove build output
 ```
@@ -60,7 +60,7 @@ Spotlight owns ⌘Space by default. Disable it first:
 System Settings → Keyboard → Keyboard Shortcuts… → Spotlight →
 uncheck "Show Spotlight search".
 
-Then start VillainCaster.
+Then start Villain Caster.
 
 ## Keys
 
@@ -105,7 +105,7 @@ Snippet values and usage counts are stored locally in UserDefaults
 
 ## Autostart
 
-System Settings → General → Login Items → add `/Applications/VillainCaster.app`.
+System Settings → General → Login Items → add `/Applications/Villain Caster.app`.
 
 ## Contributing
 

@@ -130,7 +130,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         let url = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Desktop/villaincaster-\(formatter.string(from: Date())).png")
+            .appendingPathComponent("Desktop/villain-caster-\(formatter.string(from: Date())).png")
 
         let padded = panel.frame.insetBy(dx: -screenshotPadding, dy: -screenshotPadding)
         let screen = panel.screen?.frame ?? NSScreen.screens.first?.frame ?? .zero
@@ -152,7 +152,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
                 guard let self else { return }
                 if captured {
                     self.showScreenshotFeedback("📸 saved to Desktop")
-                    NSLog("VillainCaster screenshot (screen grab): \(url.path)")
+                    NSLog("Villain Caster screenshot (screen grab): \(url.path)")
                 } else {
                     self.captureViewRender(to: url)
                 }
@@ -168,9 +168,9 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSourc
         do {
             try data.write(to: url)
             showScreenshotFeedback("📸 saved (no blur — grant Screen Recording)")
-            NSLog("VillainCaster screenshot (view render): \(url.path)")
+            NSLog("Villain Caster screenshot (view render): \(url.path)")
         } catch {
-            NSLog("VillainCaster screenshot failed: \(error)")
+            NSLog("Villain Caster screenshot failed: \(error)")
         }
     }
 
