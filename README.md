@@ -113,6 +113,33 @@ installed app.
 
 System Settings → General → Login Items → add `/Applications/Villain Caster.app`.
 
+## Releasing
+
+Maintainers only. Release builds are signed with a Developer ID, use the
+hardened runtime ([entitlements](Resources/VillainCaster.entitlements)), and
+are notarized by Apple so they open without Gatekeeper warnings.
+
+One-time setup (needs an [Apple Developer Program](https://developer.apple.com/programs/) membership):
+
+1. Xcode → Settings → Accounts → your team → Manage Certificates → **+** →
+   **Developer ID Application**.
+2. Create an app-specific password at [account.apple.com](https://account.apple.com)
+   → Sign-In and Security → App-Specific Passwords.
+3. Store notarization credentials in the keychain (prompts for the password):
+
+   ```sh
+   xcrun notarytool store-credentials villain-notary --apple-id <you@example.com> --team-id <TEAMID>
+   ```
+
+Each release: bump `CFBundleShortVersionString` / `CFBundleVersion` in
+[Info.plist](Resources/Info.plist), then
+
+```sh
+make release    # sign, notarize, staple → build/Villain-Caster-<version>.zip
+```
+
+and attach the zip to a GitHub release tagged `v<version>`.
+
 ## Contributing
 
 Issues and pull requests are welcome. The scope is intentionally small, so

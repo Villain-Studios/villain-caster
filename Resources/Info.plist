@@ -20,6 +20,8 @@
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
     <string>27.0</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Villain Caster asks Finder to empty the trash or open a window, and System Events to toggle dark mode.</string>
     <key>LSUIElement</key>
     <true/>
 </dict>

@@ -6,7 +6,7 @@ BUNDLE = build/$(APP_NAME).app
 # across rebuilds; ad-hoc ("-") re-prompts after every install.
 SIGN_IDENTITY = $(shell security find-identity -v -p codesigning 2>/dev/null | grep -q "VillainCaster Dev" && echo "VillainCaster Dev" || echo -)
 
-.PHONY: build run app icon install clean
+.PHONY: build run app icon install release clean
 
 build:
 	swift build -c release
@@ -47,6 +47,29 @@ install: app
 	cp -R "$(BUNDLE)" /Applications/
 	open "/Applications/$(APP_NAME).app"
 	@echo "Installed and started /Applications/$(APP_NAME).app"
+
+# Developer ID signing + notarization for a GitHub release (see README →
+# Releasing). Override DEVELOPER_ID / NOTARY_PROFILE on the command line.
+DEVELOPER_ID ?= $(shell security find-identity -v -p codesigning 2>/dev/null | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')
+NOTARY_PROFILE ?= villain-notary
+VERSION = $(shell /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
+ZIP = build/Villain-Caster-$(VERSION).zip
+
+release: app
+	@test -n "$(DEVELOPER_ID)" || { echo "No 'Developer ID Application' certificate in the keychain — see README → Releasing."; exit 1; }
+	codesign --force --options runtime --timestamp \
+		--entitlements Resources/VillainCaster.entitlements \
+		--sign "$(DEVELOPER_ID)" "$(BUNDLE)"
+	codesign --verify --strict --verbose=2 "$(BUNDLE)"
+	rm -f "$(ZIP)"
+	ditto -c -k --keepParent "$(BUNDLE)" "$(ZIP)"
+	xcrun notarytool submit "$(ZIP)" --keychain-profile "$(NOTARY_PROFILE)" --wait
+	xcrun stapler staple "$(BUNDLE)"
+	# Re-zip so the download carries the stapled ticket (works offline).
+	rm -f "$(ZIP)"
+	ditto -c -k --keepParent "$(BUNDLE)" "$(ZIP)"
+	spctl --assess --type execute --verbose=2 "$(BUNDLE)"
+	@echo "Notarized $(ZIP)"
 
 clean:
 	rm -rf .build build
