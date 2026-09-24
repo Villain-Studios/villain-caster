@@ -1,6 +1,10 @@
 # VillainCaster
 
-Minimal Spotlight/Raycast replacement. Only the features you actually use.
+Minimal Spotlight/Raycast replacement for macOS. Only the features you actually use.
+
+A menu bar app that opens a Liquid Glass launcher panel on ⌘Space. No file
+search on purpose, no API keys, no accounts, no telemetry, no dependencies
+beyond AppKit.
 
 ## Features
 
@@ -16,7 +20,7 @@ Type `help` (or `?`) in the launcher for this list in-app.
 | `emoji shrug` | Emoji search, ⏎ copies |
 | `g` / `yt` / `gh` + query | Web search — Google, YouTube, GitHub |
 | `work email` | Snippets — copy your emails/phone/address; set values via menu bar icon → Settings… |
-| `maximize` | Fill screen with the focused window¹ |
+| `maximize` | Resize the focused window to the monitor minus the menu bar¹ |
 | `move window` | Send focused window to next display (only with 2+ monitors)¹ |
 | `sleep` / `lock` / `trash` / `dark` | Sleep Mac, lock screen, empty trash², toggle dark mode² |
 | `quit` | Quit VillainCaster |
@@ -24,15 +28,30 @@ Type `help` (or `?`) in the launcher for this list in-app.
 
 ¹ needs Accessibility permission — ² needs a one-time Automation approval
 
-No file search. On purpose. No API keys anywhere.
+## Requirements
+
+- macOS 27 or later
+- Xcode 27 / Swift 6.4 toolchain (`swift --version`)
 
 ## Build & run
 
 ```sh
 make run        # build + run directly (dev)
 make app        # build build/VillainCaster.app
-make install    # copy to /Applications
+make install    # copy to /Applications and start it
+make clean      # remove build output
 ```
+
+There are no prebuilt binaries; build from source.
+
+### Code signing (optional)
+
+`make app` signs ad-hoc by default. macOS ties permission grants
+(Accessibility, Screen Recording) to the signature, so with ad-hoc signing
+you have to re-grant them after every rebuild. To avoid that, create a
+self-signed code signing certificate named **`VillainCaster Dev`** in
+Keychain Access (Certificate Assistant → Create a Certificate… → Certificate
+Type: Code Signing). The Makefile picks it up automatically when present.
 
 ## Important: free up ⌘Space
 
@@ -51,8 +70,50 @@ Then start VillainCaster.
 | ↑ / ↓ | move selection |
 | ⏎ | launch app / copy result |
 | Esc | close |
-| ⌘S | save screenshot of the panel to Desktop |
+| ⌘S | save screenshot of the panel to Desktop³ |
+
+³ with Screen Recording permission the glass blur is captured; without it you
+get a flat render of the panel
+
+Right-click the menu bar icon for Settings… and Quit.
+
+## Permissions
+
+| Permission | Used for |
+|------------|----------|
+| Accessibility | `maximize`, `move window` |
+| Automation → Finder | `trash`, reopening Finder windows |
+| Automation → System Events | `dark` |
+| Screen Recording (optional) | ⌘S screenshots with blur |
+
+Each one is requested only the first time you use the feature that needs it.
+
+## Privacy
+
+Everything runs locally except these lookups, which only happen when you
+type the matching query:
+
+| Query | Service | What's sent |
+|-------|---------|-------------|
+| currency | [frankfurter.dev](https://frankfurter.dev), [open.er-api.com](https://www.exchangerate-api.com/docs/free) | currency codes and amount |
+| `weather` | [ipapi.co](https://ipapi.co) | your IP address (to estimate your location) |
+| `weather` | [open-meteo.com](https://open-meteo.com) | approximate latitude/longitude |
+| `g` / `yt` / `gh` | Google, YouTube, GitHub | your search, opened in your browser |
+
+Snippet values and usage counts are stored locally in UserDefaults
+(`com.villain.villaincaster`).
 
 ## Autostart
 
 System Settings → General → Login Items → add `/Applications/VillainCaster.app`.
+
+## Contributing
+
+Issues and pull requests are welcome. The scope is intentionally small, so
+please open an issue before starting on a new feature. Commit messages follow
+[Conventional Commits](https://www.conventionalcommits.org) (`feat:`,
+`fix:`, `build:`, …).
+
+## License
+
+[MIT](LICENSE)
